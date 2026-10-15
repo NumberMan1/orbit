@@ -30,3 +30,10 @@ go.work.sum
 # Editor/IDE
 .idea/
 .vscode/
+
+# Runtime output
+*.log
+/bin/
+
+# Keep reproducible module checksums, even with a global go.sum ignore rule.
+!/go.sum

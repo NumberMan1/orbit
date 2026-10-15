@@ -1,0 +1,9 @@
+name: echo
+tcp: 127.0.0.1:9000
+http: 127.0.0.1:9001
+websocket: 127.0.0.1:9002
+max_payload: 65535
+send_queue: 256
+read_timeout: 60s
+write_timeout: 10s
+shutdown_timeout: 10s

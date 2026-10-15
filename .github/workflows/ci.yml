@@ -1,0 +1,62 @@
+name: Go
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  GOTOOLCHAIN: local
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.2'
+          cache: true
+      - run: make verify
+      - run: make fuzz
+      - name: Compile portable transports
+        run: |
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 GOTOOLCHAIN=local go build ./...
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 GOTOOLCHAIN=local go build ./...
+
+  infrastructure:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: orbit-test-only
+          MYSQL_DATABASE: orbit_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -porbit-test-only"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+      redis:
+        image: redis:7.4
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s --health-timeout=5s --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.2'
+          cache: true
+      - name: Install isolated-test etcd binary
+        run: |
+          curl --fail --location --retry 3 https://github.com/etcd-io/etcd/releases/download/v3.6.7/etcd-v3.6.7-linux-amd64.tar.gz -o /tmp/etcd.tar.gz
+          tar -xzf /tmp/etcd.tar.gz -C /tmp
+          echo /tmp/etcd-v3.6.7-linux-amd64 >> "$GITHUB_PATH"
+      - run: make integration
+        env:
+          ORBIT_TEST_MYSQL_DSN: root:orbit-test-only@tcp(127.0.0.1:3306)/orbit_test?parseTime=true
+          ORBIT_TEST_REDIS_ADDR: 127.0.0.1:6379
