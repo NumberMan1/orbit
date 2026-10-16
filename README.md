@@ -43,7 +43,7 @@ JSON 直接使用标准库 `encoding/json/v2`，Go 1.27.2 无需手动启用实�
 | [storage/redis](storage/redis/README.md) | 单机/集群连接、上下文及 TLS、启动检查 |
 | [config](config/README.md) | 泛型 YAML 加载、大小限制、严格字段与应用校验 |
 | [util](util/README.md) | 时间轮、可暂停计时器、位图、Unicode 匹配、完整写入 |
-| [logging](logging/README.md) | slog 的可选限量文件轮转输出 |
+| [logging](logging/README.md) | NumberMan1/log v0.3.0 接入指南：结构化字段、异步文件输出与生命周期 |
 
 目录索引：[存储](storage/README.md) · [运行示例](examples/README.md) · [设计文档](docs/README.md) · [CI](.github/workflows/README.md)。
 

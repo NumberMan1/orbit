@@ -2,17 +2,17 @@ package util
 
 import (
 	"errors"
-	"io"
-	"log/slog"
 	"reflect"
 	"testing"
 	"time"
+
+	serverlog "github.com/NumberMan1/log"
 )
 
 func wheel(t testing.TB) (*TimeWheel[int], time.Time) {
 	t.Helper()
 	start := time.Unix(0, 0)
-	w, err := NewTimeWheel[int](start, WheelOptions{Tick: 10 * time.Millisecond, Slots: 4, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	w, err := NewTimeWheel[int](start, WheelOptions{Tick: 10 * time.Millisecond, Slots: 4, Logger: serverlog.NewServerLogger(nil)})
 	if err != nil {
 		t.Fatal(err)
 	}

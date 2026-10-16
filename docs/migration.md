@@ -27,7 +27,7 @@
 | `service/redisconnector.go` | `storage/redis` | context 化客户端、TLS、连接检查与显式 Close |
 | `socket/mysql` | `storage/mysql`、标准库 `database/sql` | 修复连接池上限、初始化失败泄漏，保留可选 GORM |
 | `service/yamlconfig.go` | `config` | 严格 YAML 与校验，去掉业务和第三方 SDK 配置 |
-| `util/loghelper.go` | `log/slog`、`logging.RotatingWriter` | 补可选限量文件轮转；移除业务日志索引和上传耦合 |
+| `util/loghelper.go` | `github.com/NumberMan1/log v0.3.0` | 结构化字段、可选异步时间轮转/上报；不内置业务日志索引 |
 | `util/ioutil.go` | `util.WriteFull`、`io`、`os` | 补完整写入；拒绝零进展，使用安全 byte/string 转换 |
 | `util/timer.go`、`timewheel.go` | `util.TimeWheel[K]`、`PollTimer`、`After/Every` | 补回独立时间轮与暂停/恢复；Queue 只是推进/执行上下文，不能单独替代时间轮 |
 | `util/bitmap.go`、`dfa_filter.go` | `util.Bitmap`、`Matcher` | 补通用算法；修复重复计数、数据别名、Unicode/重叠匹配；词库由调用方传入 |
@@ -69,3 +69,9 @@
 ## 第二轮逐项补齐（2026-10-16）
 
 此前以简化组件代替旧能力的描述过宽，尤其遗漏了时间轮、可暂停计时器、位图/匹配、同步接收、发送钩子、会话查询/附加状态、WS 重连、状态码/表单、日志轮转、注册恢复和动态节点协调。本轮已补上这些通用能力，详见 [逐文件迁移核对](migration-audit.md)、[时间轮设计与取舍](timers.md) 和 [补充能力接入](framework-extensions.md)。迁移仍不承诺旧 API/旧业务协议直接兼容。
+
+## 日志库切换（2026-10-16）
+
+按要求切换到远程最新 tag `github.com/NumberMan1/log v0.3.0`（提交 `d824d7d09c1666a56860ab483463520a2c186ca8`），go.mod/go.sum 固定版本与校验值。之前对本地旧代码的缺陷结论不能直接套用到此 tag；该版本已修复级别禁用幂等性、动态配置并发和 JSON 兜底，并提供文件故障报告与队列溢出策略。
+
+这是日志 API 的破坏性变化：`*slog.Logger` 参数改为 `serverlog.Logger`，日志键值对改用 field，原 logging 包中的 RotatingWriter 被移除。应用拥有并关闭 core，组件只借用；默认 core 不含输出器，应在构造组件前配置或显式注入。时间轮转与原按大小轮转不同，需另行设置部署侧保留期与磁盘配额。详见 [日志接入](../logging/README.md)。

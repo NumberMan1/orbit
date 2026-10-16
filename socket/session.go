@@ -6,12 +6,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	serverlog "github.com/NumberMan1/log"
+	"github.com/NumberMan1/log/field"
 	"github.com/NumberMan1/orbit/rpc"
 )
 
@@ -39,7 +40,9 @@ type Options struct {
 	SendQueue    int
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
-	Logger       *slog.Logger
+	// Logger is borrowed. Nil captures serverlog.DefaultLogger at construction;
+	// configure its printers first. The caller closes the core after all sessions.
+	Logger serverlog.Logger
 	// OnOpen runs before the first inbound frame. OnClose runs after both I/O
 	// loops exit. Hooks are serial per session and concurrent across sessions.
 	OnOpen  func(context.Context, *Session) error
@@ -65,7 +68,7 @@ func (o Options) Normalize() (Options, error) {
 		o.WriteTimeout = 10 * time.Second
 	}
 	if o.Logger == nil {
-		o.Logger = slog.Default()
+		o.Logger = serverlog.DefaultLogger()
 	}
 	if err := rpc.ValidateLimit(o.MaxPayload); err != nil {
 		return o, err
@@ -286,7 +289,7 @@ func (s *Session) Run(handler Handler) error {
 
 func (s *Session) recoverPanic() {
 	if p := recover(); p != nil {
-		s.options.Logger.Error("session panic", "id", s.id, "panic", fmt.Sprint(p), "stack", string(debug.Stack()))
+		s.options.Logger.Error("session panic", field.Uint64("id", s.id), field.String("panic", fmt.Sprint(p)), field.String("stack", string(debug.Stack())))
 		s.close(fmt.Errorf("socket: panic: %v", p))
 	}
 }

@@ -56,7 +56,7 @@ Store 放在依赖它的监听器之前，先完成首次 List，再接受请求
 | ResyncInterval | 30 秒 | 周期性关闭当前 watch 并重新 List，即使持续有事件也会执行 |
 | MaxStaleness | 1 分钟 | 自上次有效同步超过此时长，Ready 自动失效；必须大于 ResyncInterval |
 | RetryMin / RetryMax | 100 毫秒 / 5 秒 | 指数退避并添加最多 50% 随机抖动，总等待不超过 RetryMax |
-| Logger | slog.Default() | 记录后端或 Observer panic |
+| Logger | serverlog.DefaultLogger() | 借用 NumberMan1/log Logger 记录后端或 Observer panic；默认 core 需先配置输出 |
 | Observer | 无 | 串行收到 loaded、updated、progress、retry、stopped 事件 |
 
 零值参数采用默认值，负值与非法组合返回错误。etcd 读和 watch 使用 `WithRequireLeader`。普通 watch 错误从已发布版本的下一版重连；压缩和坏数据触发全量加载；已进入重载后，即使 List 多次失败也继续重载，不会绕过错误从坏快照接着监听。

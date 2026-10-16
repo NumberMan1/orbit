@@ -59,6 +59,17 @@ CI 已更新为 Go 1.27.2 默认配置，本机结果不等同于远程 CI 结�
 
 本轮没有配置 MySQL/Redis 实例，未追加真实数据库验证；远程 CI 结果未在本机验证中计算。
 
+## NumberMan1/log v0.3.0 切换验证（2026-10-16）
+
+上述自有日志轮转测试属于切换前的验证记录；当前实现已删除本地 RotatingWriter，直接使用发布 tag v0.3.0。Go 仍为 1.27.2，GOEXPERIMENT 为空。
+
+- `make verify` 通过：格式、vet、全量 race 与构建。根目录 `logging_test.go` 验证 Queue/TimeWheel/Session 的 panic 日志字段、错误对象保留、借用 core 不被组件关闭，以及异步文件输出在关闭时排空。
+- 对所固定日志依赖执行了 7 项针对性 race 回归：禁用级别幂等、并发配置/打印、并发启用不丢更新、合法 JSON 兜底、写入故障不 panic、队列溢出报告、并发写入与关闭排空，全部通过；没有将此结果描述成上游全库测试。
+- `go test -race -tags=integration -timeout=90s ./discovery` 通过，验证日志及间接依赖更新后的真实 etcd 注册、恢复和连接池链路。
+- Linux amd64、Windows amd64 的 `CGO_ENABLED=0` 交叉构建通过；macOS arm64 已原生运行上述测试。交叉构建不等同于目标平台原生运行测试。
+- 实际运行 timers，确认三次 pulse、合法 JSON 结构化字段及正常退出；echo 使用不存在的配置启动，确认输出结构化错误日志并以失败状态退出。
+- `go mod verify` 通过，`go mod tidy -diff` 无差异；文档本地链接检查通过。Sentry 未配置外部上报，MySQL/Redis 未追加真实实例验证。
+
 ## Go 1.25.1 迁移阶段的本机验证
 
 此前迁移阶段的工具链为 Go 1.25.1，宿主为 macOS arm64。常规测试与 race 已执行；etcd 使用本机 3.6.12 二进制启动隔离实例并实际验证。MySQL/Redis 本机没有配置测试地址，外部服务集成测试跳过，仅验证参数校验与构建；CI 流程已配置，但本次本机工作不会宣称远程 CI 已运行。

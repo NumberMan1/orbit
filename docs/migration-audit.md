@@ -36,7 +36,7 @@
 | `socket/socketoption.go` | 已补齐 | socket.Options.Network、超时/报文上限 | TCP/TLS/WS 缓冲区、NoDelay 和设置错误处理 |
 | `socket/tcp/acceptor.go` | 已迁移 | socket/tcp.Server | 监听生命周期、会话管理与关闭 |
 | `socket/tcp/connector.go` | 已补齐 | socket.Connector、tcp.NewConnector | 异步拨号、WaitSession、状态、退避、取消、新会话 |
-| `socket/tcp/log.go` | 标准库替代 | slog、Options.Logger | 不恢复全局日志句柄 |
+| `socket/tcp/log.go` | 日志库替代 | NumberMan1/log、Options.Logger | 支持实例注入；组件借用、不关闭 core |
 | `socket/tcp/roreuse_linux.go` | 标准库替代 | net.ListenConfig/HTTP Server | 不默认允许多个进程复用同一监听端口 |
 | `socket/tcp/roreuse_windows.go` | 标准库替代 | net.ListenConfig/HTTP Server | 不默认允许多个进程复用同一监听端口 |
 | `socket/tcp/session.go` | 已迁移通用部分 | 共享 socket.Session、对应 Transport | 有界发送、收发钩子、附加状态、地址；业务加密/心跳 ID 排除 |
@@ -50,7 +50,7 @@
 | `util/bitmap.go` | 已补齐 | util.Bitmap | 边界、幂等计数、复制所有权、装载校验 |
 | `util/dfa_filter.go` | 已补齐 | util.Matcher | Unicode、重叠匹配、保留原文本；词表/归一化由应用注入 |
 | `util/ioutil.go` | 已补齐/安全替代 | util.WriteFull、io/os、普通 byte/string 转换 | 拒绝零进展，不迁入 unsafe 可写字符串别名 |
-| `util/loghelper.go` | 已迁移通用部分 | log/slog、logging.RotatingWriter | 级别/结构化日志/文件轮转；业务索引和日志上传不迁入 |
+| `util/loghelper.go` | 已迁移通用部分 | NumberMan1/log v0.3.0 | 结构化字段/异步时间轮转；上报由应用显式配置，不携带业务索引 |
 | `util/timer.go` | 已迁移通用部分 | util.PollTimer/After/Every、标准库 time | 暂停剩余时长、统一 duration；固定时区/5 点刷新属于业务 |
 | `util/timewheel.go` | 已补齐 | util.TimeWheel[K] | 按 key 新增/取消/重设/周期、显式推进；无角色保存字段 |
 
@@ -60,7 +60,7 @@
 
 - 时间轮/轮询/集合/IO：`util/*_test.go`；含边界、回调内删除/重设、暂停、重复计数、Unicode 重叠及局部基准。
 - 消息/会话/连接器：`codec/registry_test.go`、`socket/extensions_test.go`、`socket/connector_transport_test.go` 和 TCP/TLS/WS 测试。
-- HTTP/日志：`socket/http/form_test.go`、`logging/rotate_test.go`，验证限量、状态码、轮转与并发。
+- HTTP/日志：`socket/http/form_test.go`、根目录 `logging_test.go`，验证 HTTP 限量/状态码，以及日志字段、借用所有权和异步排空。
 - 注册/目录/协调：`discovery/etcd_integration_test.go`、`pool_test.go`、`pool_integration_test.go`，验证删除恢复、接管防护、更新所有权、节点替换和失败清理，以及真实 etcd 发现到 TCP 收发/关闭的完整链路。
 
 使用说明见 [补充能力接入](framework-extensions.md)；定时器设计见 [时间轮说明](timers.md)；完整运行记录见 [测试说明](testing.md)。

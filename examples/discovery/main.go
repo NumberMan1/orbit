@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"flag"
-	"log/slog"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -13,25 +13,36 @@ import (
 	"syscall"
 	"time"
 
+	serverlog "github.com/NumberMan1/log"
+	"github.com/NumberMan1/log/field"
 	"github.com/NumberMan1/orbit/discovery"
 	"github.com/NumberMan1/orbit/service"
 	httpserver "github.com/NumberMan1/orbit/socket/http"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
-func main() {
+func main() { os.Exit(mainCode()) }
+
+func mainCode() int {
 	endpoints := flag.String("endpoints", "http://127.0.0.1:2379", "comma-separated etcd endpoints")
 	prefix := flag.String("prefix", "/orbit/example/services", "service directory")
 	listen := flag.String("listen", "127.0.0.1:9010", "local HTTP address")
 	flag.Parse()
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	if err := run(*endpoints, *prefix, *listen, logger); err != nil {
-		logger.Error("discovery exited", "error", err)
-		os.Exit(1)
+	raw, err := serverlog.NewConfiguredLogger(serverlog.Config{Level: "info", Stdout: true, StdoutTyp: "json"})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
 	}
+	defer raw.Close() // Flush only after components and their callbacks have stopped.
+	logger := serverlog.NewServerLogger(raw)
+	if err := run(*endpoints, *prefix, *listen, logger); err != nil {
+		logger.Error("discovery exited", field.Error(err))
+		return 1
+	}
+	return 0
 }
 
-func run(endpoints, prefix, listen string, logger *slog.Logger) error {
+func run(endpoints, prefix, listen string, logger serverlog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	client, err := clientv3.New(clientv3.Config{Endpoints: strings.Split(endpoints, ","), DialTimeout: 5 * time.Second})
@@ -46,8 +57,8 @@ func run(endpoints, prefix, listen string, logger *slog.Logger) error {
 	store, err := discovery.NewStore(backend, discovery.StoreOptions{
 		Logger: logger,
 		Observer: func(event discovery.StoreEvent) {
-			logger.Info("discovery sync", "kind", event.Kind, "revision", event.Status.Revision,
-				"count", event.Status.Count, "ready", event.Status.Ready, "error", event.Status.LastError)
+			logger.Info("discovery sync", field.String("kind", event.Kind), field.Int64("revision", event.Status.Revision),
+				field.Int("count", event.Status.Count), field.Bool("ready", event.Status.Ready), field.Error(event.Status.LastError))
 		},
 	})
 	if err != nil {
@@ -68,7 +79,7 @@ func run(endpoints, prefix, listen string, logger *slog.Logger) error {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.MarshalWrite(w, store.Snapshot()); err != nil {
-			logger.Warn("write snapshot", "error", err)
+			logger.Warn("write snapshot", field.Error(err))
 		}
 	})
 	server, err := httpserver.NewServer(listen, mux, nil)

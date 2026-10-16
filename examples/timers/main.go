@@ -3,31 +3,43 @@ package main
 
 import (
 	"context"
-	"log/slog"
+	"fmt"
 	"os"
 	"time"
 
+	serverlog "github.com/NumberMan1/log"
+	"github.com/NumberMan1/log/field"
 	"github.com/NumberMan1/orbit/service"
 	"github.com/NumberMan1/orbit/util"
 )
 
-func main() {
-	if err := run(); err != nil {
-		slog.Error("timers exited", "error", err)
-		os.Exit(1)
+func main() { os.Exit(mainCode()) }
+
+func mainCode() int {
+	raw, err := serverlog.NewConfiguredLogger(serverlog.Config{Level: "info", Stdout: true, StdoutTyp: "json"})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
 	}
+	defer raw.Close() // Flush only after components and their callbacks have stopped.
+	logger := serverlog.NewServerLogger(raw)
+	if err := run(logger); err != nil {
+		logger.Error("timers exited", field.Error(err))
+		return 1
+	}
+	return 0
 }
-func run() error {
+func run(logger serverlog.Logger) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	wheel, err := util.NewTimeWheel[string](time.Now(), util.WheelOptions{Tick: 10 * time.Millisecond, Slots: 256})
+	wheel, err := util.NewTimeWheel[string](time.Now(), util.WheelOptions{Tick: 10 * time.Millisecond, Slots: 256, Logger: logger})
 	if err != nil {
 		return err
 	}
 	count := 0
 	if err := wheel.Schedule("pulse", time.Now().Add(30*time.Millisecond), 100*time.Millisecond, func(now time.Time) {
 		count++
-		slog.Info("pulse", "count", count, "at", now)
+		logger.Info("pulse", field.Int("count", count), field.Any("at", now))
 		if count == 3 {
 			wheel.Cancel("pulse")
 			cancel()
@@ -38,10 +50,10 @@ func run() error {
 	queue, err := service.NewQueue(128, 10*time.Millisecond, func(time.Time) {
 		// Use actual current time to recover from dropped ticker notifications.
 		if _, err := wheel.Advance(time.Now(), 64); err != nil {
-			slog.Error("advance", "error", err)
+			logger.Error("advance", field.Error(err))
 			cancel()
 		}
-	}, nil)
+	}, logger)
 	if err != nil {
 		return err
 	}

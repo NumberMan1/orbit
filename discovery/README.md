@@ -1,6 +1,6 @@
 # discovery
 
-通过 etcd 管理通用服务目录，将注册、读取缓存和节点连接生命周期分开。
+通过 etcd 管理通用服务目录，将注册、读取缓存和节点连接生命周期分开。StoreOptions.Logger 接收 `NumberMan1/log` 的 Logger，日志 core 由应用管理，见 [日志接入](../logging/README.md)。
 
 - Descriptor 仅包含 ID、名称、地址和元数据；区服筛选、路由与认证由应用决定。
 - Registry 通过事务独占 ID，Registration 持续续租并监听 key 所有权；Update 校验原租约，防止覆盖后继实例。

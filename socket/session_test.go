@@ -3,13 +3,12 @@ package socket_test
 import (
 	"context"
 	"errors"
-	"io"
-	"log/slog"
 	"net"
 	"sync"
 	"testing"
 	"time"
 
+	serverlog "github.com/NumberMan1/log"
 	"github.com/NumberMan1/orbit/rpc"
 	"github.com/NumberMan1/orbit/socket"
 	"github.com/NumberMan1/orbit/socket/tcp"
@@ -69,7 +68,7 @@ func TestConcurrentSendClose(t *testing.T) {
 func TestHandlerPanicClosesReaderAndWriter(t *testing.T) {
 	a, b := net.Pipe()
 	defer b.Close()
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := serverlog.NewServerLogger(nil)
 	s, _ := socket.NewSession(t.Context(), tcp.Transport{Conn: a}, socket.Options{Logger: logger})
 	done := make(chan error, 1)
 	go func() { done <- s.Run(func(context.Context, *socket.Session, rpc.Frame) error { panic("test") }) }()

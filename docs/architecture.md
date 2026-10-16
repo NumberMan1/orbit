@@ -81,7 +81,7 @@ etcd 用独立前缀保存 `Descriptor{ID, Name, Address, Metadata}`，不包含
 
 配置只接受单个 YAML 文档，限制 1 MiB，拒绝未知字段和重复键，随后执行 Validate。泛型 `config.Load[T]` 可装载应用自己的配置类型。时长使用 `10s`、`1m` 等明确单位。框架不读取全局命令行参数，不自动展开任意环境变量，也不打印完整配置和 DSN。
 
-日志使用标准库 `log/slog`，允许注入 Logger；示例将 JSON 日志输出到 stdout。日志收集和 Elasticsearch 索引由部署层负责；可选 logging.RotatingWriter 支持本地按大小轮转，核心库不会启动隐式日志上传任务。
+日志使用 `github.com/NumberMan1/log v0.3.0`，组件借用 Logger，示例显式创建独立 core 并输出 JSON 到 stdout。应用先停止组件，再 Close 日志以排空异步输出；库不关闭调用方日志，也不调用 Fatal。nil Logger 在构造时取得默认 core 的快照，使用前须配置输出器。原本地 RotatingWriter 已移除，文件轮转交给上游 FilePrinter；保留期、磁盘配额和日志收集由部署层管理。详见 [日志接入](../logging/README.md)。
 
 MySQL 配置分别设置 MaxOpen 和 MaxIdle，初始化时 PingContext，失败时关闭池。业务调用 `QueryContext` / `ExecContext` / `BeginTx`，并自行处理 Rows.Close、Rows.Err 及事务提交；GORM 使用 `WithContext`。没有旧版反射 SQL 包装器和隐式迁表。
 

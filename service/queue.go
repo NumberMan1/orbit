@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"runtime/debug"
 	"sync"
 	"time"
+
+	serverlog "github.com/NumberMan1/log"
+	"github.com/NumberMan1/log/field"
 )
 
 var (
@@ -24,15 +26,17 @@ type Queue struct {
 	started, closed bool
 	interval        time.Duration
 	update          func(time.Time)
-	logger          *slog.Logger
+	logger          serverlog.Logger
 }
 
-func NewQueue(capacity int, interval time.Duration, update func(time.Time), logger *slog.Logger) (*Queue, error) {
+// NewQueue borrows logger; nil captures the current default logger. Configure
+// its printers before construction and close its core only after Queue.Stop.
+func NewQueue(capacity int, interval time.Duration, update func(time.Time), logger serverlog.Logger) (*Queue, error) {
 	if capacity < 1 || interval < 0 || (update != nil && interval == 0) {
 		return nil, errors.New("service: invalid queue capacity or interval")
 	}
 	if logger == nil {
-		logger = slog.Default()
+		logger = serverlog.DefaultLogger()
 	}
 	return &Queue{jobs: make(chan func(), capacity), done: make(chan struct{}), interval: interval, update: update, logger: logger}, nil
 }
@@ -111,7 +115,7 @@ func (q *Queue) run() {
 func (q *Queue) call(fn func()) {
 	defer func() {
 		if p := recover(); p != nil {
-			q.logger.Error("event callback panic", "panic", fmt.Sprint(p), "stack", string(debug.Stack()))
+			q.logger.Error("event callback panic", field.String("panic", fmt.Sprint(p)), field.String("stack", string(debug.Stack())))
 		}
 	}()
 	fn()

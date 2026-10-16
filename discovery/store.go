@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"maps"
 	"math/rand/v2"
 	"runtime/debug"
@@ -12,15 +11,18 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	serverlog "github.com/NumberMan1/log"
+	"github.com/NumberMan1/log/field"
 )
 
 type StoreOptions struct {
-	RequestTimeout time.Duration // List deadline, default 5s
-	ResyncInterval time.Duration // full verification even on idle watches, default 30s
-	MaxStaleness   time.Duration // Ready expires without verified data, default 1m
-	RetryMin       time.Duration // default 100ms
-	RetryMax       time.Duration // default 5s, inclusive of random jitter
-	Logger         *slog.Logger
+	RequestTimeout time.Duration    // List deadline, default 5s
+	ResyncInterval time.Duration    // full verification even on idle watches, default 30s
+	MaxStaleness   time.Duration    // Ready expires without verified data, default 1m
+	RetryMin       time.Duration    // default 100ms
+	RetryMax       time.Duration    // default 5s, inclusive of random jitter
+	Logger         serverlog.Logger // borrowed; nil captures the current configured default
 	Observer       func(StoreEvent) // serial, prompt; must not call Stop and wait for itself
 }
 
@@ -41,7 +43,7 @@ func (o StoreOptions) normalize() (StoreOptions, error) {
 		o.RetryMax = 5 * time.Second
 	}
 	if o.Logger == nil {
-		o.Logger = slog.Default()
+		o.Logger = serverlog.DefaultLogger()
 	}
 	if o.RequestTimeout < 0 || o.ResyncInterval < 0 || o.MaxStaleness <= o.ResyncInterval || o.RetryMin < 0 || o.RetryMax < o.RetryMin {
 		return o, errors.New("discovery: invalid timeouts, staleness or retry bounds")
@@ -120,7 +122,7 @@ func (s *Store) Start(parent context.Context) (result error) {
 			result = fmt.Errorf("discovery: backend startup panic: %v", p)
 			cancel()
 			s.finish(result)
-			s.options.Logger.Error("discovery startup panic", "panic", p, "stack", string(debug.Stack()))
+			s.options.Logger.Error("discovery startup panic", field.Any("panic", p), field.String("stack", string(debug.Stack())))
 		}
 	}()
 	if err := s.reload(ctx); err != nil {
@@ -241,7 +243,7 @@ func (s *Store) run(ctx context.Context) {
 	defer func() {
 		if p := recover(); p != nil {
 			terminal = fmt.Errorf("discovery: backend panic: %v", p)
-			s.options.Logger.Error("discovery store panic", "panic", p, "stack", string(debug.Stack()))
+			s.options.Logger.Error("discovery store panic", field.Any("panic", p), field.String("stack", string(debug.Stack())))
 		}
 		s.cancel()
 		s.modify(func(state *storeState) {
@@ -372,7 +374,7 @@ func (s *Store) notify(kind string) {
 	}
 	defer func() {
 		if p := recover(); p != nil {
-			s.options.Logger.Error("discovery observer panic", "panic", p, "stack", string(debug.Stack()))
+			s.options.Logger.Error("discovery observer panic", field.Any("panic", p), field.String("stack", string(debug.Stack())))
 		}
 	}()
 	s.options.Observer(StoreEvent{Kind: kind, Status: s.Status()})

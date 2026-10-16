@@ -3,18 +3,18 @@ package service
 import (
 	"context"
 	"errors"
-	"io"
-	"log/slog"
 	"reflect"
 	"sync"
 	"testing"
 	"testing/synctest"
 	"time"
+
+	serverlog "github.com/NumberMan1/log"
 )
 
 func TestQueueDrainPanicAndBackpressure(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+		logger := serverlog.NewServerLogger(nil)
 		q, err := NewQueue(1, 0, nil, logger)
 		if err != nil {
 			t.Fatal(err)

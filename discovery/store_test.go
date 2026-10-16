@@ -3,14 +3,14 @@ package discovery
 import (
 	"context"
 	"errors"
-	"io"
-	"log/slog"
 	"reflect"
 	"strconv"
 	"sync"
 	"testing"
 	"testing/synctest"
 	"time"
+
+	serverlog "github.com/NumberMan1/log"
 )
 
 type watchReply struct {
@@ -90,7 +90,7 @@ func descriptor(id, value string) Descriptor {
 }
 func put(id, value string) Change { return Change{Type: Put, ID: id, Service: descriptor(id, value)} }
 func options() StoreOptions {
-	return StoreOptions{ResyncInterval: time.Minute, MaxStaleness: 2 * time.Minute, RetryMin: 10 * time.Millisecond, RetryMax: 20 * time.Millisecond, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	return StoreOptions{ResyncInterval: time.Minute, MaxStaleness: 2 * time.Minute, RetryMin: 10 * time.Millisecond, RetryMax: 20 * time.Millisecond, Logger: serverlog.NewServerLogger(nil)}
 }
 func startedStore(t *testing.T, b Backend, o StoreOptions) *Store {
 	t.Helper()

@@ -3,9 +3,11 @@ package util
 import (
 	"container/list"
 	"errors"
-	"log/slog"
 	"runtime/debug"
 	"time"
+
+	serverlog "github.com/NumberMan1/log"
+	"github.com/NumberMan1/log/field"
 )
 
 var (
@@ -16,7 +18,7 @@ var (
 type WheelOptions struct {
 	Tick   time.Duration
 	Slots  int
-	Logger *slog.Logger
+	Logger serverlog.Logger // borrowed; nil captures the current configured default
 }
 
 type wheelTask[K comparable] struct {
@@ -39,7 +41,7 @@ type TimeWheel[K comparable] struct {
 	current         uint64
 	slots           []list.List
 	tasks           map[K]*wheelTask[K]
-	logger          *slog.Logger
+	logger          serverlog.Logger
 	advancing       bool
 }
 
@@ -48,7 +50,7 @@ func NewTimeWheel[K comparable](start time.Time, options WheelOptions) (*TimeWhe
 		return nil, errors.New("util: positive tick and at least two slots required")
 	}
 	if options.Logger == nil {
-		options.Logger = slog.Default()
+		options.Logger = serverlog.DefaultLogger()
 	}
 	return &TimeWheel[K]{start: start, observed: start, tick: options.Tick, slots: make([]list.List, options.Slots), tasks: make(map[K]*wheelTask[K]), logger: options.Logger}, nil
 }
@@ -183,7 +185,7 @@ func (w *TimeWheel[K]) Advance(now time.Time, maxTicks int) (bool, error) {
 					w.tasks[task.key] = task
 					w.place(task)
 				} else {
-					w.logger.Error("timer repeat stopped", "error", err)
+					w.logger.Error("timer repeat stopped", field.Error(err))
 				}
 			}
 			w.call(task, now)
@@ -195,7 +197,7 @@ func (w *TimeWheel[K]) Advance(now time.Time, maxTicks int) (bool, error) {
 func (w *TimeWheel[K]) call(task *wheelTask[K], now time.Time) {
 	defer func() {
 		if p := recover(); p != nil {
-			w.logger.Error("timer callback panic", "panic", p, "stack", string(debug.Stack()))
+			w.logger.Error("timer callback panic", field.Any("panic", p), field.String("stack", string(debug.Stack())))
 		}
 	}()
 	task.fn(now)
