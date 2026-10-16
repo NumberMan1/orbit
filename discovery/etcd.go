@@ -45,10 +45,13 @@ var ErrLeaseLost = errors.New("discovery: lease lost; registration must be renew
 var ErrIDInUse = errors.New("discovery: service ID already registered")
 
 type Registration struct {
-	cancel context.CancelFunc
-	done   chan struct{}
-	mu     sync.Mutex
-	err    error
+	client  *clientv3.Client
+	key, id string
+	lease   clientv3.LeaseID
+	cancel  context.CancelFunc
+	done    chan struct{}
+	mu      sync.Mutex
+	err     error
 }
 
 // Register atomically claims an ID and keeps its lease alive until cancellation.
@@ -91,7 +94,10 @@ func (r *Registry) Register(ctx context.Context, d Descriptor, ttl int64) (*Regi
 		cancel()
 		return nil, errors.Join(err, revoke())
 	}
-	registration := &Registration{cancel: cancel, done: make(chan struct{})}
+	registration := &Registration{client: r.client, key: key, id: d.ID, lease: lease.ID, cancel: cancel, done: make(chan struct{})}
+	// A live lease alone does not prove that its key still exists or belongs to
+	// us. Watch from the successful claim revision to close the setup gap.
+	ownership := r.client.Watch(clientv3.WithRequireLeader(keepCtx), key, clientv3.WithRev(res.Header.Revision+1))
 	go func() {
 		var result error
 	loop:
@@ -106,6 +112,20 @@ func (r *Registry) Register(ctx context.Context, d Descriptor, ttl int64) (*Regi
 					}
 					break loop
 				}
+			case response, ok := <-ownership:
+				if keepCtx.Err() != nil {
+					break loop
+				}
+				if !ok || response.Err() != nil {
+					result = errors.Join(ErrLeaseLost, response.Err())
+					break loop
+				}
+				for _, event := range response.Events {
+					if event.Type == clientv3.EventTypeDelete || event.Kv.Lease != int64(lease.ID) {
+						result = ErrLeaseLost
+						break loop
+					}
+				}
 			}
 		}
 		cancel()
@@ -119,7 +139,32 @@ func (r *Registry) Register(ctx context.Context, d Descriptor, ttl int64) (*Regi
 }
 
 func (r *Registration) Done() <-chan struct{} { return r.done }
-func (r *Registration) Err() error            { r.mu.Lock(); defer r.mu.Unlock(); return r.err }
+
+// Update publishes metadata/address changes only while this lease still owns
+// the key. It never overwrites a successor registration or changes the ID.
+func (r *Registration) Update(ctx context.Context, d Descriptor) error {
+	if err := d.Validate(); err != nil {
+		return err
+	}
+	if d.ID != r.id {
+		return errors.New("discovery: registration ID cannot change")
+	}
+	data, err := json.Marshal(d)
+	if err != nil {
+		return err
+	}
+	requestCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	result, err := r.client.Txn(requestCtx).If(clientv3.Compare(clientv3.LeaseValue(r.key), "=", int64(r.lease))).Then(clientv3.OpPut(r.key, string(data), clientv3.WithLease(r.lease))).Commit()
+	if err != nil {
+		return err
+	}
+	if !result.Succeeded {
+		return ErrLeaseLost
+	}
+	return nil
+}
+func (r *Registration) Err() error { r.mu.Lock(); defer r.mu.Unlock(); return r.err }
 func (r *Registration) Close(ctx context.Context) error {
 	r.cancel()
 	select {

@@ -83,6 +83,10 @@ func (s *Server) serve(ctx context.Context, ln net.Listener) {
 			}
 			return
 		}
+		if err := socket.ConfigureConn(conn, s.options.Network); err != nil {
+			_ = conn.Close()
+			continue
+		}
 		sess, err := socket.NewSession(ctx, Transport{conn}, s.options)
 		if err != nil {
 			_ = conn.Close()
@@ -103,8 +107,10 @@ func (s *Server) Addr() net.Addr {
 	}
 	return s.listener.Addr()
 }
-func (s *Server) Done() <-chan struct{} { return s.done }
-func (s *Server) Err() error            { s.mu.Lock(); defer s.mu.Unlock(); return s.err }
+func (s *Server) Done() <-chan struct{}                     { return s.done }
+func (s *Server) Session(id uint64) (*socket.Session, bool) { return s.group.Get(id) }
+func (s *Server) SessionCount() int                         { return s.group.Len() }
+func (s *Server) Err() error                                { s.mu.Lock(); defer s.mu.Unlock(); return s.err }
 func (s *Server) Stop(ctx context.Context) error {
 	s.mu.Lock()
 	if !s.used {
@@ -139,11 +145,30 @@ func Dial(ctx context.Context, address string, options socket.Options, tlsConfig
 	if err != nil {
 		return nil, err
 	}
+	if err := socket.ConfigureConn(conn, options.Network); err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
 	s, err := socket.NewSession(ctx, Transport{conn}, options)
 	if err != nil {
 		_ = conn.Close()
 	}
 	return s, err
+}
+
+// NewConnector adds managed lifetime and readiness to TCP/TLS reconnection.
+func NewConnector(address string, options socket.Options, tlsConfig *tls.Config, handler socket.Handler, retry socket.ConnectorOptions) (*socket.Connector, error) {
+	o, err := options.Normalize()
+	if err != nil {
+		return nil, err
+	}
+	if address == "" {
+		return nil, errors.New("tcp: address required")
+	}
+	if tlsConfig != nil {
+		tlsConfig = tlsConfig.Clone()
+	}
+	return socket.NewConnector(func(ctx context.Context) (*socket.Session, error) { return Dial(ctx, address, o, tlsConfig) }, handler, retry)
 }
 
 // Reconnect invokes serve with a NEW session per connection. serve normally calls

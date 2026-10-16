@@ -141,3 +141,98 @@ func TestEtcdRegistrationWatchAndLeaseLoss(t *testing.T) {
 		t.Fatalf("registrations not revoked: %v", err)
 	}
 }
+
+func TestRegistrarRecoversDeletionWithoutOverwritingSuccessor(t *testing.T) {
+	client := testEtcd(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+	defer cancel()
+	r, _ := New(client, "/registrar")
+	d := Descriptor{ID: "one", Name: "worker", Address: "localhost:1"}
+	registrar, _ := r.NewRegistrar(d, RegistrarOptions{TTL: 3, RetryMin: 10 * time.Millisecond, RetryMax: 30 * time.Millisecond})
+	if err := registrar.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer registrar.Stop(ctx)
+	get := func() *clientv3.GetResponse {
+		t.Helper()
+		response, err := client.Get(ctx, r.prefix+d.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return response
+	}
+	wait := func(predicate func() bool) {
+		t.Helper()
+		for !predicate() {
+			select {
+			case <-ctx.Done():
+				t.Fatal("recovery timeout", registrar.Status())
+			case <-time.After(10 * time.Millisecond):
+			}
+		}
+	}
+	first := get().Kvs[0].Lease
+	if _, err := client.Delete(ctx, r.prefix+d.ID); err != nil {
+		t.Fatal(err)
+	}
+	wait(func() bool {
+		res := get()
+		return len(res.Kvs) == 1 && res.Kvs[0].Lease != first && registrar.Status().Ready
+	})
+	// Install an unrelated owner atomically. The registrar must observe loss,
+	// then refuse to reclaim that ID until the other owner releases it.
+	successor, err := client.Grant(ctx, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Put(ctx, r.prefix+d.ID, `{"id":"one","name":"other","address":"localhost:2"}`, clientv3.WithLease(successor.ID)); err != nil {
+		t.Fatal(err)
+	}
+	wait(func() bool { return errors.Is(registrar.Status().LastError, ErrIDInUse) })
+	if registrar.Status().Ready || get().Kvs[0].Lease != int64(successor.ID) {
+		t.Fatal("successor overwritten")
+	}
+	client.Revoke(ctx, successor.ID)
+	wait(func() bool { res := get(); return len(res.Kvs) == 1 && registrar.Status().Ready })
+	if err := registrar.Stop(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(get().Kvs) != 0 {
+		t.Fatal("lease retained after Stop")
+	}
+}
+
+func TestRegistrationUpdateChecksOwnership(t *testing.T) {
+	client := testEtcd(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	r, _ := New(client, "/updates")
+	d := Descriptor{ID: "one", Name: "worker", Address: "localhost:1"}
+	registration, err := r.Register(ctx, d, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer registration.Close(ctx)
+	d.Metadata = map[string]string{"state": "ready"}
+	if err := registration.Update(ctx, d); err != nil {
+		t.Fatal(err)
+	}
+	response, err := client.Get(ctx, r.prefix+d.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Kvs[0].Lease != int64(registration.lease) {
+		t.Fatal("update removed lease")
+	}
+	if _, err := client.Put(ctx, r.prefix+d.ID, "successor"); err != nil {
+		t.Fatal(err)
+	}
+	if err := registration.Update(ctx, d); !errors.Is(err, ErrLeaseLost) {
+		t.Fatal(err)
+	}
+	<-registration.Done()
+	response, err = client.Get(ctx, r.prefix+d.ID)
+	if err != nil || len(response.Kvs) != 1 || string(response.Kvs[0].Value) != "successor" {
+		t.Fatal(response, err)
+	}
+}

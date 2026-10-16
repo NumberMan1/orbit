@@ -1,6 +1,6 @@
 # 服务目录 Store
 
-`discovery.Store` 借鉴 mc-rogue `config/gameserver.Store` 的窄后端接口、原子快照、版本化监听、退避恢复和 Observer。这里只保存通用 `Descriptor`，没有引入区服、分组、玩家配置或业务写入策略。它是服务发现的读取缓存；注册和租约仍由 `Registry` 管理。
+`discovery.Store` 借鉴 mc-rogue `config/gameserver.Store` 的窄后端接口、原子快照、版本化监听、退避恢复和 Observer。这里只保存通用 `Descriptor`，没有引入区服、分组、玩家配置或业务写入策略。它是服务发现的读取缓存；注册和租约由 Registry/Registrar 管理，Pool 可将目录变更协调为连接器生命周期。
 
 ## 接入与所有权
 
@@ -20,7 +20,7 @@ etcdctl --endpoints=http://127.0.0.1:2379 put /orbit/example/services/worker-1 \
 etcdctl --endpoints=http://127.0.0.1:2379 del /orbit/example/services/worker-1
 ```
 
-演示 Put 没有租约。真实实例使用 `Registry.Register(ctx, descriptor, ttl)`，并监听 `Registration.Done/Err`。Store 不会探测 Address 是否可连接，也不会代替服务自动重新注册。生产环境由应用配置客户端认证、TLS 和独立前缀。
+演示 Put 没有租约。真实实例使用 `Registry.Register(ctx, descriptor, ttl)`，并监听 `Registration.Done/Err`。Store 不探测 Address 是否可连接；注册自动恢复由独立 Registrar 负责，连接生命周期可交给 Pool 与 socket.Connector。生产环境由应用配置客户端认证、TLS 和独立前缀。
 
 创建方式二选一：
 

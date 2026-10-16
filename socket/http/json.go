@@ -48,6 +48,10 @@ func DoJSON(ctx context.Context, client *stdhttp.Client, method, url string, req
 	if request != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	return doResponse(client, req, response, maxResponse)
+}
+
+func doResponse(client *stdhttp.Client, req *stdhttp.Request, response any, maxResponse int64) error {
 	res, err := client.Do(req)
 	if err != nil {
 		return err

@@ -29,7 +29,9 @@ func TestTCPAndTLSRoundTripShutdown(t *testing.T) {
 				serverTLS = &tls.Config{Certificates: fixture.TLS.Certificates, MinVersion: tls.VersionTLS13}
 				clientTLS = &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS13}
 			}
-			s, err := NewServer("127.0.0.1:0", socket.Options{}, echo, serverTLS)
+			noDelay := true
+			options := socket.Options{Network: socket.NetworkOptions{ReadBuffer: 4096, WriteBuffer: 4096, NoDelay: &noDelay}}
+			s, err := NewServer("127.0.0.1:0", options, echo, serverTLS)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -40,7 +42,7 @@ func TestTCPAndTLSRoundTripShutdown(t *testing.T) {
 			if err := s.Start(t.Context()); err == nil {
 				t.Fatal("duplicate start accepted")
 			}
-			client, err := Dial(t.Context(), s.Addr().String(), socket.Options{}, clientTLS)
+			client, err := Dial(t.Context(), s.Addr().String(), options, clientTLS)
 			if err != nil {
 				t.Fatal(err)
 			}

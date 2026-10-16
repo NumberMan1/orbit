@@ -30,6 +30,11 @@ type Transport interface {
 }
 
 type Options struct {
+	// IDGenerator optionally supplies nonzero IDs (for example a deployment's
+	// distributed ID generator). It must be concurrent-safe and return unique IDs.
+	// The default counter is process-local, not globally unique across servers.
+	IDGenerator  func() (uint64, error)
+	Network      NetworkOptions
 	MaxPayload   int
 	SendQueue    int
 	ReadTimeout  time.Duration
@@ -39,9 +44,17 @@ type Options struct {
 	// loops exit. Hooks are serial per session and concurrent across sessions.
 	OnOpen  func(context.Context, *Session) error
 	OnClose func(context.Context, *Session, error)
+	// BeforeSend transforms an owned frame before enqueueing. It can run
+	// concurrently across Send callers; it must return promptly and not call Send.
+	BeforeSend func(context.Context, *Session, rpc.Frame) (rpc.Frame, error)
 }
 
 func (o Options) Normalize() (Options, error) {
+	var err error
+	o.Network, err = o.Network.normalized()
+	if err != nil {
+		return o, err
+	}
 	if o.MaxPayload == 0 {
 		o.MaxPayload = rpc.MaxPayload
 	}
@@ -78,6 +91,7 @@ type Session struct {
 	cancel    context.CancelCauseFunc
 	mu        sync.Mutex
 	closed    bool
+	values    map[string]any
 	used      atomic.Bool
 	done      chan struct{}
 }
@@ -90,8 +104,29 @@ func NewSession(parent context.Context, transport Transport, options Options) (*
 	if transport == nil {
 		return nil, errors.New("socket: nil transport")
 	}
+	id, err := sessionID(o.IDGenerator)
+	if err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithCancelCause(parent)
-	return &Session{id: nextID.Add(1), transport: transport, options: o, queue: make(chan rpc.Frame, o.SendQueue), ctx: ctx, cancel: cancel, done: make(chan struct{})}, nil
+	return &Session{id: id, transport: transport, options: o, queue: make(chan rpc.Frame, o.SendQueue), ctx: ctx, cancel: cancel, done: make(chan struct{})}, nil
+}
+
+func sessionID(generator func() (uint64, error)) (id uint64, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			err = fmt.Errorf("socket: ID generator panic: %v", p)
+		}
+	}()
+	if generator == nil {
+		id = nextID.Add(1)
+	} else {
+		id, err = generator()
+	}
+	if err == nil && id == 0 {
+		err = errors.New("socket: zero session ID")
+	}
+	return
 }
 
 func (s *Session) ID() uint64               { return s.id }
@@ -104,6 +139,13 @@ func (s *Session) Done() <-chan struct{} { return s.done }
 // Send copies the payload. Success means queued, not acknowledged by the peer.
 // There is no replay across reconnections and no silent drop on a full queue.
 func (s *Session) Send(f rpc.Frame) error {
+	if s.options.BeforeSend != nil {
+		var err error
+		f, err = s.transformSend(f)
+		if err != nil {
+			return err
+		}
+	}
 	if len(f.Payload) > s.options.MaxPayload {
 		return rpc.ErrTooLarge
 	}
@@ -119,6 +161,45 @@ func (s *Session) Send(f rpc.Frame) error {
 	default:
 		return ErrQueueFull
 	}
+}
+
+func (s *Session) transformSend(f rpc.Frame) (out rpc.Frame, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			err = fmt.Errorf("socket: send hook panic: %v", p)
+		}
+	}()
+	if err := s.ctx.Err(); err != nil {
+		return rpc.Frame{}, ErrClosed
+	}
+	f.Payload = bytes.Clone(f.Payload)
+	return s.options.BeforeSend(s.ctx, s, f)
+}
+
+// SetValue stores per-session application state without reflection or global
+// tables. The map is synchronized; mutable stored objects remain caller-owned.
+func (s *Session) SetValue(key string, value any) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed || s.ctx.Err() != nil {
+		return ErrClosed
+	}
+	if s.values == nil {
+		s.values = make(map[string]any)
+	}
+	s.values[key] = value
+	return nil
+}
+func (s *Session) Value(key string) (any, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	v, ok := s.values[key]
+	return v, ok
+}
+func (s *Session) DeleteValue(key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.values, key)
 }
 
 func (s *Session) Close() { s.close(ErrClosed) }
@@ -197,6 +278,9 @@ func (s *Session) Run(handler Handler) error {
 	if s.options.OnClose != nil {
 		func() { defer s.recoverPanic(); s.options.OnClose(s.ctx, s, context.Cause(s.ctx)) }()
 	}
+	s.mu.Lock()
+	clear(s.values)
+	s.mu.Unlock()
 	return context.Cause(s.ctx)
 }
 

@@ -10,27 +10,28 @@
 
 | 源文件/目录（相对 rocommon） | 目标 | 决策 |
 | --- | --- | --- |
-| `def.go`、`node.go`、`sysmsg.go` | `orbit.Component`、`socket.Session`、`Options.OnOpen/OnClose` | 显式依赖和错误，替换动态节点工厂与业务属性接口 |
-| `codec.go` | `codec.Registry`、JSON/Protobuf、`socket/http` | 消息注册改为实例级；HTTP 表单使用标准库 `url.Values`、`ParseForm`，移除不完整的反射表单解码 |
-| `syncrecv.go` | context、Session Handler/Done、示例结果 channel | 替换只等待一次连接事件、可能永久阻塞的接口 |
+| `def.go`、`node.go`、`sysmsg.go` | `orbit.Component`、`socket.MessageEvent/Inbox`、`Session`、收发钩子 | 显式依赖和错误，替换动态节点工厂与业务属性接口 |
+| `codec.go` | `codec.Registry`、JSON/Protobuf、`socket/http` | 实例级按 ID/名称/类型查询、JSON v2/Protobuf；HTTP 使用限量 DecodeForm/DoForm 和 url.Values，移除反射表单转换 |
+| `syncrecv.go` | socket.Inbox、Connector.WaitSession、context | 补齐有界同步接收、可取消连接等待 |
 | `rpc/msg.go` | `rpc/frame.go`、`codec.Registry` | 保留明文帧结构，修复边界与错误传播 |
 | `rpc/aesctrcrypt.go`、`rsacrypt.go` | TCP/TLS、HTTPS、WSS | 不迁入固定密钥、重复 IV 及业务握手 |
-| `socket/procrpc.go` | `socket.Router`、`socket.Chain` | 移除空 RPC 占位实现和全局命名注册 |
-| `socket/sessionmanager.go`、`runtimetag.go` | `socket.Group`、实例锁/取消/Done | 消除不安全状态切换，所有权明确 |
-| `socket/nodeproperty.go`、`nodereg.go`、`socketoption.go` | 显式构造函数、`socket.Options`、context | 不再依赖全局节点工厂和反射属性写入 |
-| `socket/tcp` | `socket/tcp`、共享 Session | TCP/TLS、重连、超时；使用跨平台标准库监听，不默认启用端口复用 |
-| `socket/websocket` | `socket/websocket`、共享 Session | 单帧检查、同源策略、已升级连接关闭 |
-| `socket/http` | `socket/http` | HTTP/HTTPS、私有 mux、真正的 Shutdown、限量 JSON |
-| `service/init.go`、`flag.go`、`multinode.go` | `service.App`、示例入口 | 依赖顺序启动、回滚、故障监督、逆序关闭；不在库初始化时解析参数或启动连接 |
+| `socket/procrpc.go` | `socket.Router/Chain`、`DecodeHandler/Queued`、`BeforeSend` | 迁移实际收发钩子及队列处理；仅移除未实现的远程调用占位和全局注册 |
+| `socket/sessionmanager.go`、`runtimetag.go` | `socket.Group.Get/Snapshot`、Session.IDGenerator、取消/Done | 补查询、自定义 ID 与重复 ID 防护；默认 ID 只保证进程内唯一 |
+| `socket/nodeproperty.go`、`nodereg.go`、`socketoption.go` | 显式构造函数、NetworkOptions、Session.Value、context | 不再依赖全局节点工厂和反射属性写入 |
+| `socket/tcp` | `socket/tcp`、共享 Session | TCP/TLS、受管理 Connector、缓冲区/NoDelay、超时；使用跨平台标准库监听，不默认启用端口复用 |
+| `socket/websocket` | `socket/websocket`、共享 Session | WS/WSS、受管理 Connector 自动重连、单帧检查、同源检查、已升级连接关闭 |
+| `socket/http` | `socket/http` | HTTP/HTTPS、私有 mux、Shutdown、限量 JSON/表单和保留状态码的 WriteJSON |
+| `service/init.go`、`flag.go`、`multinode.go` | `service.App`、`service.Nodes[T]`、示例入口 | 依赖顺序启动、回滚、故障监督、逆序关闭；不在库初始化时解析参数或启动连接 |
 | `service/eventqueue.go` | `service.Queue` | 串行回调、显式背压、实例级状态、停止排空 |
-| `service/etcddesc.go`、`etcdreg.go` | `discovery` | 中性服务描述、租约所有权、无间隙快照监听；重注册及拓扑策略交给应用 |
+| `service/etcddesc.go`、`etcdreg.go` | `discovery` | 中性描述、Store、Registrar 重注册、租约所有权更新、Pool 节点协调；筛选/路由规则由应用注入 |
 | `service/redisconnector.go` | `storage/redis` | context 化客户端、TLS、连接检查与显式 Close |
 | `socket/mysql` | `storage/mysql`、标准库 `database/sql` | 修复连接池上限、初始化失败泄漏，保留可选 GORM |
 | `service/yamlconfig.go` | `config` | 严格 YAML 与校验，去掉业务和第三方 SDK 配置 |
-| `util/loghelper.go` | 标准库 `log/slog` | 结构化输出；移除业务日志与 Elasticsearch 索引/上传耦合 |
-| `util/ioutil.go` | `io`、`os`、`rpc.Write` | 移除废弃 ioutil；完整写入时检测零进展 |
-| `util/timer.go`、`timewheel.go` | `service.Queue` update、`util.After/Every` | 替换原始时间轮和全局定时状态，明确慢回调和取消行为 |
-| bitmap、DFA 过滤、`baseserver/set` 等辅助算法 | 未迁入核心 | 属于独立算法/应用工具，不是启动、通信或生命周期依赖 |
+| `util/loghelper.go` | `log/slog`、`logging.RotatingWriter` | 补可选限量文件轮转；移除业务日志索引和上传耦合 |
+| `util/ioutil.go` | `util.WriteFull`、`io`、`os` | 补完整写入；拒绝零进展，使用安全 byte/string 转换 |
+| `util/timer.go`、`timewheel.go` | `util.TimeWheel[K]`、`PollTimer`、`After/Every` | 补回独立时间轮与暂停/恢复；Queue 只是推进/执行上下文，不能单独替代时间轮 |
+| `util/bitmap.go`、`dfa_filter.go` | `util.Bitmap`、`Matcher` | 补通用算法；修复重复计数、数据别名、Unicode/重叠匹配；词库由调用方传入 |
+| `baseserver/set` 等 rocommon 外业务工具 | 范围外 | 不作为 rocommon 框架源码整体迁入 |
 
 没有迁入：`roserver` / `roweb` 的业务服务器、`serverproto` 生成协议、游戏数据表、账号登录、玩家/角色、战斗、排行榜、公会、GM、支付与第三方 SDK、机器人、跨服业务路由、AOI、共享内存业务同步、业务 Elasticsearch 索引。虽然 `baseserver` 名为基础服务器，其实现直接依赖上述协议与模型，所以没有整体迁入。
 
@@ -53,7 +54,7 @@
 3. 将全局 `RegisterMessageInfo` 改为实例 `codec.Registry.Register`，将旧回调链改为 `socket.Handler` / Router / Middleware。旧 SessionAccepted/Connected 逻辑转到 OnOpen，Closed 清理转到 OnClose。
 4. 将 `Start() ServerNode` / `Stop()` 改为带 context 且返回 error 的生命周期。依赖先启动，监听器后启动。不要忽略 Send、Post 和存储调用的错误。
 5. 旧消息头的 flags=0 可以复用；业务握手与 flags=1/2 必须协调客户端、网关和服务端一起迁移到 TLS。此版本不提供旧加密协议兼容开关。
-6. 将 etcd ID、元数据和关注关系转换到 Descriptor 与应用自己的路由策略。监听 Registration.Done，将租约丢失纳入健康状态与重注册流程。目录读取可使用 discovery.Store，并根据 Status.Ready 决定是否允许使用缓存。
+6. 将 etcd ID、元数据和关注关系转换到 Descriptor 与应用自己的路由策略。可用 Registrar 自动监督 key/租约丢失并安全重注册，也可手动监督 Registration.Done。目录读取使用 discovery.Store，并根据 Status.Ready 决定是否允许使用缓存；Pool 结合注入的连接器工厂维护节点。
 7. 将旧 YAML 转成新配置，独立注入数据库/证书凭据。不要直接拷贝旧配置目录、SDK 密钥、业务地址和业务协议。
 8. 运行目标环境的集成测试与负载测试。此迁移没有宣称原游戏业务无修改即可启动，也没有给出未经测量的吞吐提升数据。
 
@@ -64,3 +65,7 @@
 ## Go 1.27 与 JSON v2 升级
 
 目标工具链由 Go 1.25.1 调整为 Go 1.27.2，go.mod、.go-version、Makefile 和 CI 一致固定该补丁版。框架 JSON 路径改为标准库 encoding/json/v2，使用 Go 1.27.2 默认配置，无需实验开关；HTTP 流式读取继续限制正文大小并拒绝尾随值。字段大小写、nil 集合、omitempty 和非法输入处理存在语义变化，详见 [适配说明](go127.md)。
+
+## 第二轮逐项补齐（2026-10-16）
+
+此前以简化组件代替旧能力的描述过宽，尤其遗漏了时间轮、可暂停计时器、位图/匹配、同步接收、发送钩子、会话查询/附加状态、WS 重连、状态码/表单、日志轮转、注册恢复和动态节点协调。本轮已补上这些通用能力，详见 [逐文件迁移核对](migration-audit.md)、[时间轮设计与取舍](timers.md) 和 [补充能力接入](framework-extensions.md)。迁移仍不承诺旧 API/旧业务协议直接兼容。

@@ -61,3 +61,30 @@ func TestProtobuf(t *testing.T) {
 		t.Fatal("invalid type accepted")
 	}
 }
+
+func TestNamedIndexesAreAtomic(t *testing.T) {
+	var r Registry
+	if err := r.RegisterNamed(1, "first", &first{}, JSON{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.RegisterNamed(2, "first", &second{}, JSON{}); err == nil {
+		t.Fatal("duplicate name")
+	}
+	if _, ok := r.ByID(2); ok {
+		t.Fatal("failed registration changed ID index")
+	}
+	if _, ok := r.ByMessage(&second{}); ok {
+		t.Fatal("failed registration changed type index")
+	}
+	if err := r.RegisterNamed(2, "second", &second{}, JSON{}); err != nil {
+		t.Fatal(err)
+	}
+	a, ok := r.ByName("second")
+	if !ok || a.ID != 2 {
+		t.Fatal(a, ok)
+	}
+	b, _ := r.ByMessage((*second)(nil))
+	if a != b {
+		t.Fatal(a, b)
+	}
+}

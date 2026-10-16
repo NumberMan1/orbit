@@ -47,6 +47,18 @@ MySQL 测试只执行 SELECT 与 GORM 读取，Redis 测试执行 PING。没有 
 
 CI 已更新为 Go 1.27.2 默认配置，本机结果不等同于远程 CI 结果。
 
+## rocommon 补齐验证（2026-10-16）
+
+继续使用 Go 1.27.2 darwin/arm64，清空 GOEXPERIMENT；源项目只读。
+
+- 逐文件核对表与源目录的 47 个 Go 文件集合完全一致，并检查文档中的本地链接。文件覆盖不等于旧 API 兼容，各项替代与排除边界见 [迁移核对表](migration-audit.md)。
+- `make verify` 通过：格式、vet、全量 race 与构建。新增测试覆盖时间轮整圈/取整/追赶/回调修改、暂停恢复、位图/Unicode 匹配、会话状态/自定义 ID/发送钩子/同步接收、TCP/WS 重连、表单/响应状态和并发日志轮转。
+- `go test -race -tags=integration -timeout=90s ./discovery` 通过：临时真实 etcd 验证 key 删除后重注册、后继实例所有权保护、带租约更新；新增完整链路验证注册 → Store → Pool → TCP Connector 收发，以及移除注册后连接器和服务端会话关闭。Pool 单元测试另覆盖替换、目录异常保留节点、启动清理失败时禁止重复创建。
+- `go run ./examples/timers` 实际触发三次后正常退出。时间轮与 runtime 定时器的维护基准已执行，数据及适用边界见 [时间轮说明](timers.md)；未将局部基准作为游戏负载性能结论。
+- Linux amd64、Windows amd64 的 `CGO_ENABLED=0` 交叉构建通过；`go mod verify` 通过、`go mod tidy -diff` 无差异。
+
+本轮没有配置 MySQL/Redis 实例，未追加真实数据库验证；远程 CI 结果未在本机验证中计算。
+
 ## Go 1.25.1 迁移阶段的本机验证
 
 此前迁移阶段的工具链为 Go 1.25.1，宿主为 macOS arm64。常规测试与 race 已执行；etcd 使用本机 3.6.12 二进制启动隔离实例并实际验证。MySQL/Redis 本机没有配置测试地址，外部服务集成测试跳过，仅验证参数校验与构建；CI 流程已配置，但本次本机工作不会宣称远程 CI 已运行。

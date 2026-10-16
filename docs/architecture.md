@@ -63,7 +63,7 @@ JSON 编解码直接使用标准库 `encoding/json/v2`，Go 1.27.2 无需手动�
 
 Stop 停止接受新任务并排空已接受任务。不要在队列回调中调用自己的 Stop 等待自己退出；应通知外层取消应用。将队列作为网络监听器之前的组件，这样网络先停止、队列再排空。
 
-`util.After` 与 `util.Every` 是阻塞型定时助手，调用方管理其 goroutine 和 panic 策略。回调串行，慢回调会合并 ticker 的 tick，不会补发全部过期 tick。没有全局时间状态，也没有业务回调类型。大量定时任务的集中调度与持久化调度不在当前 API 内。
+`util.After` 与 `util.Every` 是阻塞型定时助手，调用方管理其 goroutine 和 panic 策略。回调串行，慢回调会合并 ticker 的 tick，不会补发全部过期 tick。没有全局时间状态，也没有业务回调类型。大量任务可使用 util.TimeWheel[K] 由 Queue 推进，轮询/暂停计时使用 PollTimer；持久化调度仍由应用实现。详见 [时间轮设计](timers.md)。
 
 `Session.Heartbeat` 同样是阻塞函数，通过 factory 生成应用心跳帧；它随传入 context 或 Session 关闭退出。心跳消息 ID、ACK 和超时判定属于应用协议，框架不固定它们。
 
@@ -71,17 +71,17 @@ Stop 停止接受新任务并排空已接受任务。不要在队列回调中调
 
 `tcp.Reconnect` 接收地址、socket options、可选 TLS、退避上下界和 serve 函数。serve 应调用 `Session.Run` 并响应取消。每次成功连接生成新 Session，旧发送队列不重放。连接失败时退避指数增长到上限；context 可立即打断等待和拨号。当前不包含随机抖动和多地址负载均衡，集群规模较大时由调用方增加调度策略。
 
-etcd 用独立前缀保存 `Descriptor{ID, Name, Address, Metadata}`，不包含游戏区服类型或关注列表策略。`Registry.Register` 使用事务防止重复 ID 覆盖，持续消费 keepalive 响应，取消后撤销租约。租约丢失通过 `Registration.Done/Err` 暴露；应用应降低就绪状态，并按退避策略重新注册。框架不会在租约失效后继续伪装注册成功。
+etcd 用独立前缀保存 `Descriptor{ID, Name, Address, Metadata}`，不包含游戏区服类型或关注列表策略。`Registry.Register` 使用事务防止重复 ID 覆盖，持续消费 keepalive 响应，取消后撤销租约。租约丢失通过 `Registration.Done/Err` 暴露；应用应降低就绪状态，并按退避策略重新注册。Registry 还监听注册 key 所有权；key 被删除或被其他租约接管也会报告失效。可选 Registrar 组件按退避策略安全重新注册，Registration.Update 仅在仍持有租约时更新。
 
-`Registry.Watch` 先读取完整快照，再从读取版本的下一版监听，避免查询与 watch 之间丢事件。发生压缩会重新拉取快照；其他 watch 错误返回调用方。每次回调获得独立的完整快照，可以安全保留或修改。业务在快照变化后决定连接哪些节点、更新路由或负载均衡。旧跨服路由和自动连接业务策略没有迁入。
+`Registry.Watch` 先读取完整快照，再从读取版本的下一版监听，避免查询与 watch 之间丢事件。发生压缩会重新拉取快照；其他 watch 错误返回调用方。每次回调获得独立的完整快照，可以安全保留或修改。业务在快照变化后决定连接哪些节点、更新路由或负载均衡。通用 Pool 可根据 Store 快照及调用方注入的工厂创建、替换和关闭连接器；旧跨服路由和区服筛选策略没有迁入。
 
-推荐使用 `Registry.NewStore` 创建受监督的目录缓存：首次同步成功后才完成 Start；以事务 revision 原子发布快照，提供 Get/All/Snapshot、Status 和 Observer。断流后指数退避并添加抖动，压缩或非法数据触发全量重载；加载失败保留有效快照但取消就绪。默认每 30 秒重新验证目录，避免空闲 watch 长时间失联而未被发现。注册租约恢复仍与读取缓存分开处理。详见 [Store 使用说明](discovery-store.md)。
+推荐使用 `Registry.NewStore` 创建受监督的目录缓存：首次同步成功后才完成 Start；以事务 revision 原子发布快照，提供 Get/All/Snapshot、Status 和 Observer。断流后指数退避并添加抖动，压缩或非法数据触发全量重载；加载失败保留有效快照但取消就绪。默认每 30 秒重新验证目录，避免空闲 watch 长时间失联而未被发现。注册租约恢复由独立 Registrar 处理，读取缓存仍由 Store 管理。详见 [Store 使用说明](discovery-store.md)。
 
 ## 配置、日志与存储
 
 配置只接受单个 YAML 文档，限制 1 MiB，拒绝未知字段和重复键，随后执行 Validate。泛型 `config.Load[T]` 可装载应用自己的配置类型。时长使用 `10s`、`1m` 等明确单位。框架不读取全局命令行参数，不自动展开任意环境变量，也不打印完整配置和 DSN。
 
-日志使用标准库 `log/slog`，允许注入 Logger；示例将 JSON 日志输出到 stdout。日志轮转、收集和 Elasticsearch 索引由部署层负责，核心库不会启动隐式日志上传任务。
+日志使用标准库 `log/slog`，允许注入 Logger；示例将 JSON 日志输出到 stdout。日志收集和 Elasticsearch 索引由部署层负责；可选 logging.RotatingWriter 支持本地按大小轮转，核心库不会启动隐式日志上传任务。
 
 MySQL 配置分别设置 MaxOpen 和 MaxIdle，初始化时 PingContext，失败时关闭池。业务调用 `QueryContext` / `ExecContext` / `BeginTx`，并自行处理 Rows.Close、Rows.Err 及事务提交；GORM 使用 `WithContext`。没有旧版反射 SQL 包装器和隐式迁表。
 

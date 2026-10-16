@@ -90,6 +90,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
+	if err := socket.ConfigureConn(conn.UnderlyingConn(), s.options.Network); err != nil {
+		_ = conn.Close()
+		return
+	}
 	sess, err := socket.NewSession(r.Context(), Transport{conn}, s.options)
 	if err != nil {
 		_ = conn.Close()
@@ -101,10 +105,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer s.group.Remove(sess)
 	_ = sess.Run(s.handler)
 }
-func (s *Server) Start(ctx context.Context) error { return s.http.Start(ctx) }
-func (s *Server) Addr() net.Addr                  { return s.http.Addr() }
-func (s *Server) Done() <-chan struct{}           { return s.http.Done() }
-func (s *Server) Err() error                      { return s.http.Err() }
+func (s *Server) Start(ctx context.Context) error           { return s.http.Start(ctx) }
+func (s *Server) Addr() net.Addr                            { return s.http.Addr() }
+func (s *Server) Done() <-chan struct{}                     { return s.http.Done() }
+func (s *Server) Err() error                                { return s.http.Err() }
+func (s *Server) Session(id uint64) (*socket.Session, bool) { return s.group.Get(id) }
+func (s *Server) SessionCount() int                         { return s.group.Len() }
 func (s *Server) Stop(ctx context.Context) error {
 	s.stopOnce.Do(func() {
 		s.mu.Lock()
@@ -137,9 +143,27 @@ func Dial(ctx context.Context, url string, options socket.Options, tlsConfig *tl
 		}
 		return nil, err
 	}
+	if err := socket.ConfigureConn(conn.UnderlyingConn(), options.Network); err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
 	s, err := socket.NewSession(ctx, Transport{conn}, options)
 	if err != nil {
 		_ = conn.Close()
 	}
 	return s, err
+}
+
+func NewConnector(url string, options socket.Options, tlsConfig *tls.Config, handler socket.Handler, retry socket.ConnectorOptions) (*socket.Connector, error) {
+	o, err := options.Normalize()
+	if err != nil {
+		return nil, err
+	}
+	if url == "" {
+		return nil, errors.New("websocket: URL required")
+	}
+	if tlsConfig != nil {
+		tlsConfig = tlsConfig.Clone()
+	}
+	return socket.NewConnector(func(ctx context.Context) (*socket.Session, error) { return Dial(ctx, url, o, tlsConfig) }, handler, retry)
 }
