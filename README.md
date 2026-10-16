@@ -27,20 +27,25 @@ JSON 直接使用标准库 `encoding/json/v2`，Go 1.27.2 无需手动启用实�
 
 ## 能力与目录
 
+根包 `orbit` 只定义 `Component` 的 Start/Stop 契约：组件按依赖顺序启动、逆序关闭，Start 失败时自行清理部分资源，Stop 应幂等；除非另有说明，组件为单次使用。各目录 README 简述具体包的并发、资源归属及使用边界。
+
 | 目录 | 能力 |
 | --- | --- |
-| `rpc` | 兼容原明文消息头的帧读写，长度检查、完整读写、序号透传 |
-| `codec` | 实例级 ID/名称/类型注册表，JSON v2、现代 Protobuf |
-| `socket` | 会话查询/状态、有界收发、类型化消息与回复、收发钩子、队列桥接 |
-| `socket/tcp` | TCP/TLS、受管理连接器、退避重连、网络选项 |
-| `socket/websocket` | WebSocket/WSS、受管理连接器、重连、帧与同源检查 |
-| `socket/http` | HTTP/HTTPS、私有路由、限量 JSON/表单、状态码响应 |
-| `service` | 有序启动、失败回滚、运行故障监督、逆序关闭、串行事件队列 |
-| `discovery` | etcd 注册/恢复/状态更新、原子 Store、动态节点 Pool、就绪状态 |
-| `storage/mysql` | 有界 SQL 连接池、可选 GORM，调用方持有并关闭连接 |
-| `storage/redis` | 单机/集群连接、上下文及 TLS、启动检查 |
-| `config`、`util` | 严格 YAML、时间轮、可暂停计时器、位图、Unicode 匹配、完整写入 |
-| `logging` | slog 的可选限量文件轮转输出 |
+| [rpc](rpc/README.md) | 兼容原明文消息头的帧读写，长度检查、完整读写、序号透传 |
+| [codec](codec/README.md) | 实例级 ID/名称/类型注册表，JSON v2、现代 Protobuf |
+| [socket](socket/README.md) | 会话查询/状态、有界收发、类型化消息与回复、收发钩子、队列桥接 |
+| [socket/tcp](socket/tcp/README.md) | TCP/TLS、受管理连接器、退避重连、网络选项 |
+| [socket/websocket](socket/websocket/README.md) | WebSocket/WSS、受管理连接器、重连、帧与同源检查 |
+| [socket/http](socket/http/README.md) | HTTP/HTTPS、私有路由、限量 JSON/表单、状态码响应 |
+| [service](service/README.md) | 有序启动、失败回滚、运行故障监督、逆序关闭、串行事件队列 |
+| [discovery](discovery/README.md) | etcd 注册/恢复/状态更新、原子 Store、动态节点 Pool、就绪状态 |
+| [storage/mysql](storage/mysql/README.md) | 有界 SQL 连接池、可选 GORM，调用方持有并关闭连接 |
+| [storage/redis](storage/redis/README.md) | 单机/集群连接、上下文及 TLS、启动检查 |
+| [config](config/README.md) | 泛型 YAML 加载、大小限制、严格字段与应用校验 |
+| [util](util/README.md) | 时间轮、可暂停计时器、位图、Unicode 匹配、完整写入 |
+| [logging](logging/README.md) | slog 的可选限量文件轮转输出 |
+
+目录索引：[存储](storage/README.md) · [运行示例](examples/README.md) · [设计文档](docs/README.md) · [CI](.github/workflows/README.md)。
 
 业务自行定义消息、处理函数、路由、身份认证和数据模型。框架没有业务协议生成代码、账号系统、支付配置、游戏逻辑、业务数据库结构或内置密钥。
 
