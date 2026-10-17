@@ -5,6 +5,7 @@
 | 文档 | 内容 |
 | --- | --- |
 | [architecture](architecture.md) | 分层、生命周期、背压与所有权 |
+| [production](production.md) | 准入/限流、分阶段停服、健康/指标、请求响应及网关 |
 | [framework-extensions](framework-extensions.md) | 消息、连接器、注册/连接池、HTTP 和工具接入 |
 | [timers](timers.md) | 标准定时器、PollTimer 与时间轮的选择和边界 |
 | [discovery-store](discovery-store.md) | Store 快照、一致性、恢复、就绪与演示 |

@@ -31,6 +31,12 @@ type Transport interface {
 }
 
 type Options struct {
+	// Admission is an optional shared listener quota, applied before session allocation.
+	Admission *Admission
+	// InboundRate optionally limits each session before decoding or queueing.
+	InboundRate RateLimit
+	// Metrics is an optional borrowed, concurrency-safe counter collector.
+	Metrics *Metrics
 	// IDGenerator optionally supplies nonzero IDs (for example a deployment's
 	// distributed ID generator). It must be concurrent-safe and return unique IDs.
 	// The default counter is process-local, not globally unique across servers.
@@ -53,6 +59,9 @@ type Options struct {
 }
 
 func (o Options) Normalize() (Options, error) {
+	if err := o.InboundRate.validate(); err != nil {
+		return o, err
+	}
 	var err error
 	o.Network, err = o.Network.normalized()
 	if err != nil {
@@ -86,17 +95,20 @@ type Handler func(context.Context, *Session, rpc.Frame) error
 var nextID atomic.Uint64
 
 type Session struct {
-	id        uint64
-	transport Transport
-	options   Options
-	queue     chan rpc.Frame
-	ctx       context.Context
-	cancel    context.CancelCauseFunc
-	mu        sync.Mutex
-	closed    bool
-	values    map[string]any
-	used      atomic.Bool
-	done      chan struct{}
+	id                      uint64
+	transport               Transport
+	options                 Options
+	queue                   chan rpc.Frame
+	ctx                     context.Context
+	cancel                  context.CancelCauseFunc
+	mu                      sync.Mutex
+	closed                  bool
+	draining                bool
+	pendingWrites, inFlight int
+	changed                 chan struct{}
+	values                  map[string]any
+	used                    atomic.Bool
+	done                    chan struct{}
 }
 
 func NewSession(parent context.Context, transport Transport, options Options) (*Session, error) {
@@ -112,7 +124,7 @@ func NewSession(parent context.Context, transport Transport, options Options) (*
 		return nil, err
 	}
 	ctx, cancel := context.WithCancelCause(parent)
-	return &Session{id: id, transport: transport, options: o, queue: make(chan rpc.Frame, o.SendQueue), ctx: ctx, cancel: cancel, done: make(chan struct{})}, nil
+	return &Session{id: id, transport: transport, options: o, queue: make(chan rpc.Frame, o.SendQueue), ctx: ctx, cancel: cancel, done: make(chan struct{}), changed: make(chan struct{})}, nil
 }
 
 func sessionID(generator func() (uint64, error)) (id uint64, err error) {
@@ -160,8 +172,12 @@ func (s *Session) Send(f rpc.Frame) error {
 	f.Payload = bytes.Clone(f.Payload)
 	select {
 	case s.queue <- f:
+		s.pendingWrites++
 		return nil
 	default:
+		if m := s.options.Metrics; m != nil {
+			m.rejected.Add(1)
+		}
 		return ErrQueueFull
 	}
 }
@@ -215,6 +231,7 @@ func (s *Session) close(cause error) {
 	}
 	s.closed = true
 	s.cancel(cause)
+	s.signalLocked()
 	s.mu.Unlock()
 	_ = s.transport.Close()
 }
@@ -226,6 +243,10 @@ func (s *Session) Run(handler Handler) error {
 		return errors.New("socket: session already run")
 	}
 	defer close(s.done)
+	if m := s.options.Metrics; m != nil {
+		m.active.Add(1)
+		defer m.active.Add(-1)
+	}
 	stop := context.AfterFunc(s.ctx, func() { s.close(context.Cause(s.ctx)) })
 	defer stop()
 	var wg sync.WaitGroup
@@ -247,17 +268,39 @@ func (s *Session) Run(handler Handler) error {
 					s.close(err)
 					return
 				}
+				if m := s.options.Metrics; m != nil {
+					m.sent.Add(1)
+					m.sentBytes.Add(uint64(len(f.Payload)))
+				}
+				s.mu.Lock()
+				s.pendingWrites--
+				s.signalLocked()
+				s.mu.Unlock()
 			}
 		}
 	})
 	func() {
 		defer s.recoverPanic()
 		if s.options.OnOpen != nil && s.ctx.Err() == nil {
-			if err := s.options.OnOpen(s.ctx, s); err != nil {
+			if !s.retainWork(false) {
+				<-s.ctx.Done()
+				return
+			}
+			err := func() error {
+				defer s.releaseWork()
+				defer s.recoverPanic()
+				err := s.options.OnOpen(s.ctx, s)
+				if err != nil {
+					s.close(err)
+				}
+				return err
+			}()
+			if err != nil {
 				s.close(err)
 				return
 			}
 		}
+		var bucket tokenBucket
 		for s.ctx.Err() == nil {
 			if err := s.transport.SetReadDeadline(deadline(s.options.ReadTimeout)); err != nil {
 				s.close(err)
@@ -268,8 +311,35 @@ func (s *Session) Run(handler Handler) error {
 				s.close(err)
 				return
 			}
-			if handler != nil {
-				if err := handler(s.ctx, s, f); err != nil {
+			if m := s.options.Metrics; m != nil {
+				m.received.Add(1)
+				m.receivedBytes.Add(uint64(len(f.Payload)))
+			}
+			{
+				if !s.retainWork(false) {
+					<-s.ctx.Done()
+					return
+				}
+				err := func() (err error) {
+					defer s.releaseWork()
+					defer func() {
+						if err != nil {
+							s.close(err)
+						}
+					}()
+					defer s.recoverPanic()
+					if !bucket.allow(s.options.InboundRate, time.Now()) {
+						if m := s.options.Metrics; m != nil {
+							m.rejected.Add(1)
+						}
+						return ErrRateLimited
+					}
+					if handler == nil {
+						return nil
+					}
+					return s.handle(handler, s.ctx, f)
+				}()
+				if err != nil {
 					s.close(err)
 					return
 				}
@@ -285,6 +355,23 @@ func (s *Session) Run(handler Handler) error {
 	clear(s.values)
 	s.mu.Unlock()
 	return context.Cause(s.ctx)
+}
+
+func (s *Session) handle(handler Handler, ctx context.Context, f rpc.Frame) (err error) {
+	start := time.Now()
+	if m := s.options.Metrics; m != nil {
+		defer func() {
+			m.handlerNanos.Add(uint64(time.Since(start)))
+			if err != nil {
+				m.handlerErrors.Add(1)
+			}
+			if p := recover(); p != nil {
+				m.handlerErrors.Add(1)
+				panic(p)
+			}
+		}()
+	}
+	return handler(ctx, s, f)
 }
 
 func (s *Session) recoverPanic() {

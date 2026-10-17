@@ -1,6 +1,10 @@
 package socket
 
-import "sync"
+import (
+	"context"
+	"errors"
+	"sync"
+)
 
 // Group owns sessions; closing seals it against racing accepts/upgrades.
 // The zero value is ready to use. A closed group cannot be reused.
@@ -70,4 +74,26 @@ func (g *Group) Close() {
 	for _, s := range all {
 		s.Close()
 	}
+}
+
+// Seal prevents new membership without interrupting existing sessions.
+func (g *Group) Seal() { g.mu.Lock(); g.closed = true; g.mu.Unlock() }
+
+// Drain seals membership and drains existing sessions concurrently under ctx.
+func (g *Group) Drain(ctx context.Context) error {
+	g.Seal()
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var result error
+	for _, s := range g.Snapshot() {
+		wg.Go(func() {
+			if err := s.Drain(ctx); err != nil {
+				mu.Lock()
+				result = errors.Join(result, err)
+				mu.Unlock()
+			}
+		})
+	}
+	wg.Wait()
+	return result
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"runtime/debug"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	serverlog "github.com/NumberMan1/log"
@@ -20,13 +21,14 @@ var (
 // Queue serializes callbacks. Post never blocks, including from a callback.
 // Stop drains accepted callbacks; callbacks must return in bounded time.
 type Queue struct {
-	mu              sync.Mutex
-	jobs            chan func()
-	done            chan struct{}
-	started, closed bool
-	interval        time.Duration
-	update          func(time.Time)
-	logger          serverlog.Logger
+	mu                                sync.Mutex
+	jobs                              chan func()
+	done                              chan struct{}
+	started, closed                   bool
+	interval                          time.Duration
+	update                            func(time.Time)
+	logger                            serverlog.Logger
+	executed, panics, rejected, nanos atomic.Uint64
 }
 
 // NewQueue borrows logger; nil captures the current default logger. Configure
@@ -68,6 +70,7 @@ func (q *Queue) Post(fn func()) error {
 	case q.jobs <- fn:
 		return nil
 	default:
+		q.rejected.Add(1)
 		return ErrFull
 	}
 }
@@ -113,10 +116,29 @@ func (q *Queue) run() {
 }
 
 func (q *Queue) call(fn func()) {
+	start := time.Now()
 	defer func() {
+		q.executed.Add(1)
+		q.nanos.Add(uint64(time.Since(start)))
 		if p := recover(); p != nil {
+			q.panics.Add(1)
 			q.logger.Error("event callback panic", field.String("panic", fmt.Sprint(p)), field.String("stack", string(debug.Stack())))
 		}
 	}()
 	fn()
+}
+
+// QueueStatus exposes approximate pressure and cumulative callback statistics.
+// Executed and ExecutionNanos include update callbacks; Panics counts recovered panics.
+type QueueStatus struct {
+	Queued, Capacity                           int
+	Accepting                                  bool
+	Executed, Panics, Rejected, ExecutionNanos uint64
+}
+
+// Status is safe concurrently with Post, callback execution and Stop.
+func (q *Queue) Status() QueueStatus {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return QueueStatus{len(q.jobs), cap(q.jobs), q.started && !q.closed, q.executed.Load(), q.panics.Load(), q.rejected.Load(), q.nanos.Load()}
 }

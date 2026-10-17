@@ -86,6 +86,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.wg.Add(1)
 	s.mu.Unlock()
 	defer s.wg.Done()
+	release, err := s.options.Admission.Acquire(r.RemoteAddr)
+	if err != nil {
+		http.Error(w, "connection capacity reached", http.StatusServiceUnavailable)
+		return
+	}
+	defer release()
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
@@ -111,6 +117,22 @@ func (s *Server) Done() <-chan struct{}                     { return s.http.Done
 func (s *Server) Err() error                                { return s.http.Err() }
 func (s *Server) Session(id uint64) (*socket.Session, bool) { return s.group.Get(id) }
 func (s *Server) SessionCount() int                         { return s.group.Len() }
+
+// Quiesce rejects new upgrades and seals membership without closing live sessions.
+func (s *Server) Quiesce() {
+	s.mu.Lock()
+	s.closed = true
+	s.group.Seal()
+	s.mu.Unlock()
+}
+
+// Drain finishes accepted session work and sends before shutting down HTTP.
+func (s *Server) Drain(ctx context.Context) error {
+	s.Quiesce()
+	err := s.group.Drain(ctx)
+	return errors.Join(err, s.Stop(ctx))
+}
+
 func (s *Server) Stop(ctx context.Context) error {
 	s.stopOnce.Do(func() {
 		s.mu.Lock()

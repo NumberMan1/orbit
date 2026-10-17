@@ -33,11 +33,36 @@ func NewApp(shutdownTimeout time.Duration, components ...orbit.Component) (*App,
 // Run starts components in order, waits for cancellation, then stops in reverse.
 // Startup failure rolls back every successfully started component.
 func (a *App) Run(ctx context.Context) error {
+	return a.run(ctx, false)
+}
+
+// RunGraceful retains component contexts during normal shutdown: all Quiesce
+// hooks run first, then Drain hooks in reverse dependency order, then cancellation
+// and Stop. One timeout bounds the entire shutdown. Startup cancellation and
+// component failure still abort immediately. Custom hooks must honor their budget.
+// Components without Drain retain the existing Stop contract.
+func (a *App) RunGraceful(ctx context.Context) error { return a.run(ctx, true) }
+
+// Quiescer stops admission promptly without waiting for in-flight work.
+type Quiescer interface{ Quiesce() }
+
+// Drainer finishes accepted work within ctx while dependencies remain alive.
+type Drainer interface{ Drain(context.Context) error }
+
+func (a *App) run(ctx context.Context, graceful bool) error {
 	if !a.used.CompareAndSwap(false, true) {
 		return errors.New("service: app already run")
 	}
-	runCtx, cancelRun := context.WithCancelCause(ctx)
+	parent := ctx
+	if graceful {
+		parent = context.WithoutCancel(ctx)
+	}
+	runCtx, cancelRun := context.WithCancelCause(parent)
 	defer cancelRun(nil)
+	stopStartup := context.AfterFunc(ctx, func() { cancelRun(context.Cause(ctx)) })
+	defer stopStartup()
+	monitorCtx, stopMonitor := context.WithCancel(context.Background())
+	defer stopMonitor()
 	var monitors sync.WaitGroup
 	started := 0
 	var result error
@@ -57,6 +82,7 @@ func (a *App) Run(ctx context.Context) error {
 		}); ok {
 			monitors.Go(func() {
 				select {
+				case <-monitorCtx.Done():
 				case <-runCtx.Done():
 				case <-monitored.Done():
 					if runCtx.Err() == nil {
@@ -70,17 +96,36 @@ func (a *App) Run(ctx context.Context) error {
 			})
 		}
 	}
+	stopStartup()
 	if result == nil {
-		<-runCtx.Done()
+		select {
+		case <-ctx.Done():
+		case <-runCtx.Done():
+		}
 		if ctx.Err() == nil {
 			result = context.Cause(runCtx)
 		}
 	}
-	cancelRun(result)
+	stopMonitor()
 	monitors.Wait()
 	// Keep values but remove the canceled run deadline for bounded cleanup.
 	stopCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), a.timeout)
 	defer cancel()
+	if graceful && result == nil && runCtx.Err() == nil {
+		for i := started - 1; i >= 0; i-- {
+			if q, ok := a.components[i].(Quiescer); ok {
+				q.Quiesce()
+			}
+		}
+		for i := started - 1; i >= 0; i-- {
+			if d, ok := a.components[i].(Drainer); ok {
+				if err := d.Drain(stopCtx); err != nil {
+					result = errors.Join(result, fmt.Errorf("drain component %d: %w", i, err))
+				}
+			}
+		}
+	}
+	cancelRun(result)
 	for i := started - 1; i >= 0; i-- {
 		if err := a.components[i].Stop(stopCtx); err != nil {
 			result = errors.Join(result, fmt.Errorf("stop component %d: %w", i, err))

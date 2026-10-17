@@ -20,17 +20,18 @@ func (t Transport) ReadFrame(limit int) (rpc.Frame, error)  { return rpc.Read(t.
 func (t Transport) WriteFrame(f rpc.Frame, limit int) error { return rpc.Write(t.Conn, f, limit) }
 
 type Server struct {
-	mu       sync.Mutex
-	address  string
-	options  socket.Options
-	handler  socket.Handler
-	tls      *tls.Config
-	listener net.Listener
-	cancel   context.CancelFunc
-	done     chan struct{}
-	used     bool
-	group    socket.Group
-	err      error
+	mu        sync.Mutex
+	address   string
+	options   socket.Options
+	handler   socket.Handler
+	tls       *tls.Config
+	listener  net.Listener
+	cancel    context.CancelFunc
+	done      chan struct{}
+	used      bool
+	quiescing bool
+	group     socket.Group
+	err       error
 }
 
 func NewServer(address string, options socket.Options, handler socket.Handler, tlsConfig *tls.Config) (*Server, error) {
@@ -50,7 +51,7 @@ func NewServer(address string, options socket.Options, handler socket.Handler, t
 func (s *Server) Start(parent context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.used {
+	if s.used || s.quiescing {
 		return errors.New("tcp: server already started or stopped")
 	}
 	if err := parent.Err(); err != nil {
@@ -72,30 +73,49 @@ func (s *Server) Start(parent context.Context) error {
 func (s *Server) serve(ctx context.Context, ln net.Listener) {
 	var wg sync.WaitGroup
 	stop := context.AfterFunc(ctx, func() { _ = ln.Close(); s.group.Close() })
-	defer func() { stop(); _ = ln.Close(); s.group.Close(); wg.Wait(); close(s.done) }()
+	defer func() {
+		_ = ln.Close()
+		s.mu.Lock()
+		draining := s.quiescing
+		s.mu.Unlock()
+		if !draining {
+			s.group.Close()
+		}
+		wg.Wait()
+		stop()
+		close(s.done)
+	}()
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			if ctx.Err() == nil {
-				s.mu.Lock()
+			s.mu.Lock()
+			if ctx.Err() == nil && !s.quiescing {
 				s.err = err
-				s.mu.Unlock()
 			}
+			s.mu.Unlock()
 			return
 		}
+		release, err := s.options.Admission.Acquire(conn.RemoteAddr().String())
+		if err != nil {
+			_ = conn.Close()
+			continue
+		}
 		if err := socket.ConfigureConn(conn, s.options.Network); err != nil {
+			release()
 			_ = conn.Close()
 			continue
 		}
 		sess, err := socket.NewSession(ctx, Transport{conn}, s.options)
 		if err != nil {
+			release()
 			_ = conn.Close()
 			continue
 		}
 		if !s.group.Add(sess) {
+			release()
 			continue
 		}
-		wg.Go(func() { defer s.group.Remove(sess); _ = sess.Run(s.handler) })
+		wg.Go(func() { defer release(); defer s.group.Remove(sess); _ = sess.Run(s.handler) })
 	}
 }
 
@@ -110,7 +130,27 @@ func (s *Server) Addr() net.Addr {
 func (s *Server) Done() <-chan struct{}                     { return s.done }
 func (s *Server) Session(id uint64) (*socket.Session, bool) { return s.group.Get(id) }
 func (s *Server) SessionCount() int                         { return s.group.Len() }
-func (s *Server) Err() error                                { s.mu.Lock(); defer s.mu.Unlock(); return s.err }
+
+// Quiesce stops accepting connections without canceling existing sessions.
+func (s *Server) Quiesce() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.quiescing = true
+	s.group.Seal()
+	if s.listener != nil {
+		_ = s.listener.Close()
+	}
+}
+
+// Drain quiesces, finishes accepted work and writes, then stops the listener.
+// On deadline it force-closes sessions; it does not guarantee peer delivery.
+func (s *Server) Drain(ctx context.Context) error {
+	s.Quiesce()
+	err := s.group.Drain(ctx)
+	return errors.Join(err, s.Stop(ctx))
+}
+
+func (s *Server) Err() error { s.mu.Lock(); defer s.mu.Unlock(); return s.err }
 func (s *Server) Stop(ctx context.Context) error {
 	s.mu.Lock()
 	if !s.used {

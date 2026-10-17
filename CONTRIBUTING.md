@@ -20,13 +20,14 @@ make fuzz
 git diff --check
 ```
 
-`make verify` 检查精确工具链版本、格式、vet、竞态及构建。没有 Make 的环境可执行：
+`make verify` 检查精确工具链版本、格式、vet、竞态、构建及生成物一致性。没有 Make 的环境可执行：
 
 ```sh
 gofmt -l .
 go vet ./...
 go test -race -count=1 -timeout=90s ./...
 go build ./...
+go run ./cmd/orbitgen -in examples/gateway/protocol/messages.json -out examples/gateway/protocol/bindings_gen.go -check
 go test ./rpc -run='^$' -fuzz=FuzzRead -fuzztime=10s
 ```
 

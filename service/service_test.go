@@ -41,6 +41,9 @@ func TestQueueDrainPanicAndBackpressure(t *testing.T) {
 		if n != 1 {
 			t.Fatalf("drain = %d", n)
 		}
+		if status := q.Status(); status.Accepting || status.Queued != 0 || status.Executed != 2 || status.Panics != 1 || status.Rejected != 1 {
+			t.Fatal(status)
+		}
 		if err := q.Post(func() {}); !errors.Is(err, ErrClosed) {
 			t.Fatal(err)
 		}

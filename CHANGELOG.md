@@ -5,6 +5,16 @@
 
 ## 未发布
 
+### 服务器运行能力
+
+- 增加共享连接配额、每来源连接限制、Session 入站令牌桶和处理中请求并发限制；默认保持禁用。
+- 增加 Session/TCP/WS/HTTP 排空接口与可选 App.RunGraceful，跟踪 Queued 中已接受请求；原有 Run/Close 保持立即关闭语义。
+- 增加 health 组件、Session/Queue/Admission/request 状态和可共享的无全局注册运行指标。
+- 增加 request 调用层：有界等待表、唯一序号、默认超时、乱序匹配、断连/取消清理；不自动重试。
+- 增加 discovery.Picker 的健康连接选择、轮询和 key 亲和路由，以及 gateway.Forward 的有界转发与序号还原。
+- 增加 orbitgen 注册代码生成、生成物一致性检查和两后端网关端到端示例。
+- 配置热更新、完整 Actor、AOI、异步推送和持久化消息交付不在本轮范围；通用层不引入账户/支付/玩家模型。
+
 ### 依赖与时间轮
 
 - 时间轮改用 `github.com/NumberMan1/numbox v0.3.0` 的 `pkg/timewheel`，移除 Orbit 内的调度算法。

@@ -1,5 +1,9 @@
 # discovery
 
+`NewPicker(pool)` 从目录就绪且已连接的节点中选择；空 affinity 使用轮询，非空 affinity 使用稳定 ID 的 rendezvous hash。
+Pool 成员需实现 `SessionProvider`（Connector 已实现），自定义组件可加入业务就绪条件。选择后仍可能断线，不自动重试。
+详见 [生产能力说明](../docs/production.md) 和 [网关示例](../examples/gateway/README.md)。
+
 通过 etcd 管理通用服务目录，将注册、读取缓存和节点连接生命周期分开。StoreOptions.Logger 接收 `NumberMan1/log` 的 Logger，日志 core 由应用管理，见 [日志接入](../logging/README.md)。
 
 - Descriptor 仅包含 ID、名称、地址和元数据；区服筛选、路由与认证由应用决定。

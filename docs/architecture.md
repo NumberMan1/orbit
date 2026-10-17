@@ -12,6 +12,10 @@ App、监听器、队列、discovery.Store 和 Session 均为单次使用对象�
 
 HTTP 的 `Start` context 用于初始化；请求通过 `Stop` 优雅排空。TCP Session 随其父 context 取消立即关闭；WebSocket 的已升级连接在服务器 `Stop` 时显式关闭。应用应通过 App 驱动统一退出。
 
+需要完成已接收请求时使用可选 `App.RunGraceful`：正常退出先 Quiesce、逆序 Drain，再取消组件 context 并 Stop。
+它保留排空期间的组件 context，覆盖 Session 同步回调、Queued 回调和待发帧；启动失败/运行故障仍立即取消。
+原有 Run 和 Close 行为保持不变，排空不代表对端已确认。详细约束见 [生产能力说明](production.md)。
+
 ## 网络收发与并发模型
 
 每条 Session 有一个读循环和一个写循环，回调在该 Session 的读循环中串行执行。不同连接的回调并行执行。`OnOpen` 在第一条入站消息之前调用，`OnClose` 在读写循环退出之后调用一次；`OnClose` 收到的 context 已取消，适合清理，不适合继续发送。回调 panic 会记录结构化日志、关闭连接并回收读写协程。
@@ -20,7 +24,7 @@ HTTP 的 `Start` context 用于初始化；请求通过 `Stop` 优雅排空。TC
 
 发送队列不被关闭，关闭状态与发送入队在同一锁下判定，通过 context 和关闭 transport 唤醒阻塞读写。这避免了旧版 `len(channel)` 检查后阻塞、向已关闭队列发送及写协程泄漏问题。发送消息的字节切片在调用返回后可由调用方继续修改。
 
-`socket.Options` 的默认值：最大 payload 65535 字节，发送队列 256，写超时 10 秒，读超时 0（不限制空闲时间）。示例开启 60 秒读超时。高并发生产部署还需要在接入层或应用层配置连接总量、速率、身份认证和访问控制；框架当前没有全局连接配额。
+`socket.Options` 的默认值：最大 payload 65535 字节，发送队列 256，写超时 10 秒，读超时 0（不限制空闲时间）。示例开启 60 秒读超时。可选 Admission 在监听器之间共享总量/每来源配额，InboundRate 限制每连接入站速率；零值维持旧行为。身份认证和访问控制由应用配置，详见 [生产能力说明](production.md)。
 
 TLS 使用构造函数传入的 `*tls.Config`，它会被 Clone；证书和根证书由部署方提供。可设置 `MinVersion: tls.VersionTLS13`。没有默认信任所有证书或跳过校验。普通 TCP/WS 示例仅绑定本机回环地址。
 

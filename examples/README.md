@@ -8,5 +8,6 @@
 | [client](client/README.md) | 单次 TCP 发送、接收与会话清理 | 已启动的 echo TCP 服务 |
 | [discovery](discovery/README.md) | etcd Store 快照与就绪接口 | 本地或指定 etcd |
 | [timers](timers/README.md) | Queue 推进时间轮与回调取消 | 无 |
+| [gateway](gateway/README.md) | 两后端网关、限流、请求响应、健康/指标及排空退出 | 无（示例使用静态目录） |
 
 示例强调资源归属和错误处理，不携带游戏协议或业务模型。部署参数、认证和证书需由实际应用配置。

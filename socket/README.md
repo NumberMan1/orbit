@@ -1,5 +1,9 @@
 # socket
 
+可选 Admission 提供共享连接配额，InboundRate 在解码前限制每连接入站消息，LimitConcurrent 限制处理并发。
+Session.Drain 支持已接受回调和发送排空；Status/Metrics 暴露压力和运行计数。
+原有 Close 保持立即关闭，默认不启用配额/速率限制，完整语义见 [生产能力说明](../docs/production.md)。
+
 在不同传输之上统一会话、消息处理与重连，具体监听和拨号位于子包。Options.Logger 使用 `NumberMan1/log` 的 Logger，组件仅借用；配置与关闭见 [日志接入](../logging/README.md)。
 
 - Session.Run 单次运行，管理串行读取和发送循环；Send 复制 payload，有界队列满时返回错误。发送成功表示入队，不代表对端确认；Close 会中止待发送数据。

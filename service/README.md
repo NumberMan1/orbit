@@ -1,5 +1,8 @@
 # service
 
+`App.RunGraceful` 可选启用 Quiesce → Drain → 取消运行 context → Stop 的分阶段关闭；Run 保留原有语义。
+Queue.Status 提供队列压力、执行、拒绝与 panic 计数。详细依赖顺序和超时边界见 [生产能力说明](../docs/production.md)。
+
 组合组件生命周期，并为需要单线程逻辑的应用提供串行执行队列。Queue 注入 `NumberMan1/log` 的 Logger，应用在队列停止后再关闭日志 core，见 [日志接入](../logging/README.md)。
 
 - App 按传入顺序 Start，失败回滚已启动组件，退出时逆序 Stop；组件应自行清理失败 Start 的部分资源。

@@ -65,15 +65,23 @@ func Queued(queue Poster, handler Handler) (Handler, error) {
 	return func(ctx context.Context, s *Session, f rpc.Frame) error {
 		ctx = context.WithValue(ctx, receiveTimeKey{}, time.Now())
 		f.Payload = bytes.Clone(f.Payload)
-		return queue.Post(func() {
+		if !s.retainWork(true) {
+			return ErrClosed
+		}
+		err := queue.Post(func() {
+			defer s.releaseWork()
 			defer s.recoverPanic()
 			if ctx.Err() != nil {
 				return
 			}
-			if err := handler(ctx, s, f); err != nil {
+			if err := s.handle(handler, ctx, f); err != nil {
 				s.close(err)
 			}
 		})
+		if err != nil {
+			s.releaseWork()
+		}
+		return err
 	}, nil
 }
 

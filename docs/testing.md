@@ -98,3 +98,30 @@ CI 已更新为 Go 1.27.2 默认配置，本机结果不等同于远程 CI 结�
 - 尝试 `CGO_ENABLED=1 go test -race -count=1 -timeout=90s ./...`，因本机缺少 gcc 在编译阶段失败，未完成竞态验证。CI 保留 Ubuntu 上的 race 检查，未将未运行的远端 CI 算作通过。
 
 本轮未追加 etcd、MySQL、Redis 真实实例集成验证，也未变更 GitHub 仓库可见性或创建发布 tag。
+
+## 服务器运行能力补齐验证（2026-10-17）
+
+环境为 Windows amd64、Go 1.27.2；新增能力与适用边界见 [生产服务基础能力](production.md)。
+
+- `go test -count=1 -timeout=90s ./...` 通过；新增测试覆盖 TCP/WS 连接配额释放、消息限流、并发配额、已接收请求排空回包、强制关闭超时、停服阶段顺序、健康检查隔离、请求超时/断线/乱序/迟到响应、节点筛选与黏性选择、生成器校验及完整网关链路。
+- 实际运行 gateway 示例的 `-self-test`：四次请求轮询到两台后端，响应内容和序号正确，三个管理端点正常，随后排空退出。补充 SIGTERM 支持后，网关端到端测试重新通过；Windows 本机未实际发送 Unix SIGTERM。
+- `go vet ./...`、Windows 原生 `go build ./...`、`go mod verify` 通过，`go mod tidy -diff` 无差异；Linux amd64 与 macOS arm64 的 `CGO_ENABLED=0` 交叉构建通过，未将交叉构建视为目标平台原生测试。
+- 协议 fuzz 运行 10 秒，通过约 133 万次执行，无失败输入；生成器 `-check` 通过，已加入 `make verify`。本次执行量不作为性能比较依据。
+- `gofmt -l .` 无输出，`git diff --check` 与文档本地文件链接检查通过。
+- 尝试 `CGO_ENABLED=1 go test -race -count=1 -timeout=90s ./...`，因缺少 gcc 在编译阶段失败；竞态验证未完成，不能将本次检查视为完整 `make verify` 通过。
+- 执行 `go test -v -tags=integration -timeout=90s ./discovery ./storage/...`；非外部实例用例通过。五项真实 etcd 用例因缺少 etcd 可执行文件跳过，MySQL/Redis 各一项实例用例因未配置测试连接跳过，未完成真实基础设施集成验证。
+
+网关示例使用进程内静态目录及真实回环 TCP/HTTP，不依赖外部服务。远程 CI、持续负载与生产部署验证未在本轮执行。
+
+## 补充完成竞态与真实实例验证（2026-10-17）
+
+前述 gcc 与服务缺失阻碍已解决。本次使用 Windows amd64、Go 1.27.2、WinLibs GCC 16.2.0，显式设置 `CGO_ENABLED=1`。
+
+- `go test -race -count=1 -timeout=90s ./...` 全量通过，包含新增网关端到端测试；未发现数据竞争。
+- 按 CONTRIBUTING.md 分项完成 `make verify` 对应检查：格式、`go vet ./...`、全量 race、`go build ./...` 和生成器 `-check` 均通过；`go mod verify` 通过、`go mod tidy -diff` 无差异，`git diff --check` 通过。
+- `go test -race -count=1 -v -tags=integration -timeout=90s ./discovery ./storage/...` 全部通过，没有 skip。此前跳过的五项真实 etcd 用例以及 MySQL、Redis 各一项实例用例均实际执行。
+- etcd 使用官方 Windows amd64 v3.7.2 发布包，按同版本 `SHA256SUMS` 校验（SHA256：`76989536a5f333642687fbd85603087c3deb4d316fd86fdfb63897b05f851cf4`）。每项测试启动独立进程、临时数据目录和随机回环端口，覆盖续租/租约丢失、删除恢复、实例所有权、Store 压缩与坏数据恢复，以及注册到连接池的完整链路。
+- MySQL 8.4.11 和 Redis 8.2.10 使用 Podman 独立临时容器、随机回环端口；MySQL 验证连接池、SQL 和 GORM 读取，Redis 验证真实 PING。未复用现有开发服务，测试结束后移除临时容器及匿名测试卷。
+- 协议 fuzz 再次运行 10 秒，通过 643,885 次执行，无失败输入；执行量不作为性能比较依据。
+
+本次补充验证使用的服务版本如上，不替代 CI 中固定版本或多节点、持续负载、生产部署验证。

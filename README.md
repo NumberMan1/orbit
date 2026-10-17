@@ -62,6 +62,10 @@ JSON 直接使用标准库 `encoding/json/v2`，Go 1.27.2 无需手动启用实�
 | [config](config/README.md) | 泛型 YAML 加载、大小限制、严格字段与应用校验 |
 | [util](util/README.md) | 时间轮、可暂停计时器、位图、Unicode 匹配、完整写入 |
 | [logging](logging/README.md) | NumberMan1/log v0.3.1 接入指南：结构化字段、异步文件输出与生命周期 |
+| [health](health/README.md) | 聚合存活/就绪检查，排空期间取消就绪 |
+| [request](request/README.md) | 有界请求响应匹配、超时取消、断连清理 |
+| [gateway](gateway/README.md) | 有界后端转发与客户端序号还原 |
+| [orbitgen](cmd/orbitgen/README.md) | 消息注册与 Handler 绑定代码生成、一致性检查 |
 
 目录索引：[存储](storage/README.md) · [运行示例](examples/README.md) · [设计文档](docs/README.md) · [CI](.github/workflows/README.md)。
 
@@ -80,6 +84,10 @@ make integration  # 独立 etcd 实例，以及可配置的 MySQL/Redis 集成�
 进一步阅读：[架构与使用约定](docs/architecture.md) · [迁移对照与已修复问题](docs/migration.md) · [Go 1.27.2 适配](docs/go127.md) · [Store 使用说明](docs/discovery-store.md) · [etcd 实现对比](docs/etcd-comparison.md)。
 
 更多接入：[时间轮与定时器](docs/timers.md) · [补充框架能力](docs/framework-extensions.md) · [rocommon 逐文件核对](docs/migration-audit.md)。可运行 `go run ./examples/timers` 查看时间轮与串行 Queue 的组合。
+
+生产接入：[连接配额、限流、优雅停服、健康与指标](docs/production.md)。
+运行 `go run ./examples/gateway -listen 127.0.0.1:0 -admin 127.0.0.1:0 -self-test`
+验证两后端网关、请求响应及排空退出。分阶段停服使用可选 `App.RunGraceful`，原有 Run/Close 行为保持兼容。
 
 ## 参与与许可
 

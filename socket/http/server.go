@@ -8,17 +8,19 @@ import (
 	"net"
 	stdhttp "net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 type Server struct {
-	mu       sync.Mutex
-	server   *stdhttp.Server
-	listener net.Listener
-	done     chan struct{}
-	used     bool
-	err      error
-	tls      *tls.Config
+	mu        sync.Mutex
+	server    *stdhttp.Server
+	listener  net.Listener
+	done      chan struct{}
+	used      bool
+	err       error
+	tls       *tls.Config
+	quiescing atomic.Bool
 }
 
 // NewServer uses a private mux/handler; no handlers (including pprof) are global.
@@ -29,7 +31,15 @@ func NewServer(address string, handler stdhttp.Handler, tlsConfig *tls.Config) (
 	if tlsConfig != nil {
 		tlsConfig = tlsConfig.Clone()
 	}
-	return &Server{server: &stdhttp.Server{Addr: address, Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 20}, done: make(chan struct{}), tls: tlsConfig}, nil
+	s := &Server{done: make(chan struct{}), tls: tlsConfig}
+	s.server = &stdhttp.Server{Addr: address, Handler: stdhttp.HandlerFunc(func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
+		if s.quiescing.Load() {
+			stdhttp.Error(w, "server draining", stdhttp.StatusServiceUnavailable)
+			return
+		}
+		handler.ServeHTTP(w, r)
+	}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 20}
+	return s, nil
 }
 
 // The parent context governs initialization. Stop performs graceful draining;
@@ -37,7 +47,7 @@ func NewServer(address string, handler stdhttp.Handler, tlsConfig *tls.Config) (
 func (s *Server) Start(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.used {
+	if s.used || s.quiescing.Load() {
 		return errors.New("http: server already started or stopped")
 	}
 	if err := ctx.Err(); err != nil {
@@ -62,6 +72,12 @@ func (s *Server) Start(ctx context.Context) error {
 	}()
 	return nil
 }
+
+// Quiesce rejects new HTTP requests; already executing handlers keep their context.
+func (s *Server) Quiesce() { s.quiescing.Store(true) }
+
+// Drain rejects new work and uses net/http's bounded graceful shutdown.
+func (s *Server) Drain(ctx context.Context) error { s.Quiesce(); return s.Stop(ctx) }
 
 func (s *Server) Stop(ctx context.Context) error {
 	s.mu.Lock()
