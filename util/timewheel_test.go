@@ -2,12 +2,53 @@ package util
 
 import (
 	"errors"
+	"math"
 	"reflect"
 	"testing"
 	"time"
 
 	serverlog "github.com/NumberMan1/log"
+	"github.com/NumberMan1/numbox/pkg/timewheel"
 )
+
+func TestWheelUpstreamKeyValidationAndEmptyAdvance(t *testing.T) {
+	start := time.Unix(0, 0)
+	w, err := NewTimeWheel[any](start, WheelOptions{Tick: time.Millisecond, Slots: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Orbit's compatibility type is usable by callers expecting the upstream type.
+	var upstream *timewheel.TimeWheel[any] = w
+	fn := func(time.Time) {}
+	for _, key := range []any{[]int{1}, map[string]int{"a": 1}, math.NaN()} {
+		if err := upstream.Schedule(key, start, 0, fn); !errors.Is(err, ErrInvalidKey) {
+			t.Fatalf("invalid key %T: %v", key, err)
+		}
+		if ok, err := w.Reset(key, start); ok || !errors.Is(err, timewheel.ErrInvalidKey) {
+			t.Fatalf("reset invalid key %T: %v, %v", key, ok, err)
+		}
+		if w.Cancel(key) {
+			t.Fatal("invalid key canceled a task")
+		}
+	}
+	now := start.Add(24 * time.Hour)
+	if caught, err := w.Advance(now, 1); !caught || err != nil {
+		t.Fatalf("empty wheel did not jump: %v, %v", caught, err)
+	}
+	calls := 0
+	if err := w.Schedule(nil, now.Add(time.Millisecond), 0, func(time.Time) { calls++ }); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Schedule(nil, now, 0, fn); !errors.Is(err, timewheel.ErrTimerExists) || !errors.Is(err, ErrTimerExists) {
+		t.Fatal("duplicate sentinel changed", err)
+	}
+	if caught, err := w.Advance(now.Add(time.Millisecond), 1); !caught || err != nil || calls != 1 {
+		t.Fatalf("schedule after jump: %v, %v, calls=%d", caught, err, calls)
+	}
+	if _, err := w.Advance(start, 1); !errors.Is(err, timewheel.ErrClockBackwards) || !errors.Is(err, ErrClockBackwards) {
+		t.Fatal("clock sentinel changed", err)
+	}
+}
 
 func wheel(t testing.TB) (*TimeWheel[int], time.Time) {
 	t.Helper()

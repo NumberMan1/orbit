@@ -2,8 +2,13 @@
 
 提供不依赖业务模型的定时、集合、文本匹配和完整写入工具。WheelOptions.Logger 接收 `NumberMan1/log` 的 Logger，仅借用，见 [日志接入](../logging/README.md)。
 
+时间轮通过发布依赖 `github.com/NumberMan1/numbox v0.3.0` 的 `pkg/timewheel` 提供。
+`TimeWheel[K]` 是上游类型别名，`NewTimeWheel` 仅适配日志；本包不维护调度算法。
+错误变量与上游保持同一哨兵，使用 `errors.Is` 判断，不依赖错误文本前缀。
+
 - `TimeWheel[K]` 按 key 管理任务，单层槽位加圈数，由调用方 Advance；截止时间向上取整，支持取消/重设，周期任务合并错过的次数。
 - 时间轮所有操作须在同一执行上下文中进行，不自行启动 goroutine；maxTicks 只限制推进槽数，不限制单槽回调数量或耗时。
+- key 必须可比较且等于自身；切片/映射接口值、NaN 等返回 ErrInvalidKey，nil 接口 key 可用。空轮 Advance 可直接追到目标时间。
 - PollTimer 适合主动 update 检查，支持暂停/恢复。After/Every 是受 context 控制的阻塞函数，调用方负责执行 goroutine 和 panic 策略。
 - Bitmap 使用 [0,size) 下标，重复增删不改变计数；Bytes/Load 复制数据。Bitmap 与 PollTimer 不内置并发同步。
 - Matcher 是可并发读取的不可变 Unicode trie，词表由调用方注入；支持重叠匹配，返回 rune 半开区间，替换保留未匹配文本。

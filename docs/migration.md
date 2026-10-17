@@ -27,9 +27,9 @@
 | `service/redisconnector.go` | `storage/redis` | context 化客户端、TLS、连接检查与显式 Close |
 | `socket/mysql` | `storage/mysql`、标准库 `database/sql` | 修复连接池上限、初始化失败泄漏，保留可选 GORM |
 | `service/yamlconfig.go` | `config` | 严格 YAML 与校验，去掉业务和第三方 SDK 配置 |
-| `util/loghelper.go` | `github.com/NumberMan1/log v0.3.0` | 结构化字段、可选异步时间轮转/上报；不内置业务日志索引 |
+| `util/loghelper.go` | `github.com/NumberMan1/log v0.3.1` | 结构化字段、可选异步时间轮转/上报；不内置业务日志索引 |
 | `util/ioutil.go` | `util.WriteFull`、`io`、`os` | 补完整写入；拒绝零进展，使用安全 byte/string 转换 |
-| `util/timer.go`、`timewheel.go` | `util.TimeWheel[K]`、`PollTimer`、`After/Every` | 补回独立时间轮与暂停/恢复；Queue 只是推进/执行上下文，不能单独替代时间轮 |
+| `util/timer.go`、`timewheel.go` | `util.TimeWheel[K]`、`PollTimer`、`After/Every` | 时间轮改用 numbox 发布依赖，保留暂停/恢复；Queue 只是推进/执行上下文，不能单独替代时间轮 |
 | `util/bitmap.go`、`dfa_filter.go` | `util.Bitmap`、`Matcher` | 补通用算法；修复重复计数、数据别名、Unicode/重叠匹配；词库由调用方传入 |
 | `baseserver/set` 等 rocommon 外业务工具 | 范围外 | 不作为 rocommon 框架源码整体迁入 |
 
@@ -72,6 +72,17 @@
 
 ## 日志库切换（2026-10-16）
 
-按要求切换到远程最新 tag `github.com/NumberMan1/log v0.3.0`（提交 `d824d7d09c1666a56860ab483463520a2c186ca8`），go.mod/go.sum 固定版本与校验值。之前对本地旧代码的缺陷结论不能直接套用到此 tag；该版本已修复级别禁用幂等性、动态配置并发和 JSON 兜底，并提供文件故障报告与队列溢出策略。
+当时切换到远程 tag `github.com/NumberMan1/log v0.3.0`（提交 `d824d7d09c1666a56860ab483463520a2c186ca8`），go.mod/go.sum 固定版本与校验值。之前对本地旧代码的缺陷结论不能直接套用到此 tag；该版本已修复级别禁用幂等性、动态配置并发和 JSON 兜底，并提供文件故障报告与队列溢出策略。
 
 这是日志 API 的破坏性变化：`*slog.Logger` 参数改为 `serverlog.Logger`，日志键值对改用 field，原 logging 包中的 RotatingWriter 被移除。应用拥有并关闭 core，组件只借用；默认 core 不含输出器，应在构造组件前配置或显式注入。时间轮转与原按大小轮转不同，需另行设置部署侧保留期与磁盘配额。详见 [日志接入](../logging/README.md)。
+
+## numbox 时间轮与日志依赖更新（2026-10-17）
+
+时间轮改用 GitHub 发布依赖 `github.com/NumberMan1/numbox v0.3.0`，对应提交
+`f87ec986a57535725c8618bbc180699a80615af1`。`util.TimeWheel[K]` 是上游类型别名，
+构造函数仅保留 NumberMan1/log 日志适配，现有调用无需更换 Logger 类型。
+错误哨兵直接复用上游，文本前缀变为 `timewheel:`；新增非法 key 检查和空轮快速推进，详见 [时间轮说明](timers.md)。
+
+日志升级到 `github.com/NumberMan1/log v0.3.1`，对应提交
+`6674654a2833df929cefda48b32d7f28d6e37557`。保留应用拥有日志 core、组件仅借用的生命周期约定。
+两个依赖均固定发布 tag 与 go.sum 校验值，不通过本地路径替换。

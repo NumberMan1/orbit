@@ -61,7 +61,7 @@ CI 已更新为 Go 1.27.2 默认配置，本机结果不等同于远程 CI 结�
 
 ## NumberMan1/log v0.3.0 切换验证（2026-10-16）
 
-上述自有日志轮转测试属于切换前的验证记录；当前实现已删除本地 RotatingWriter，直接使用发布 tag v0.3.0。Go 仍为 1.27.2，GOEXPERIMENT 为空。
+上述自有日志轮转测试属于切换前的验证记录；当时已删除本地 RotatingWriter，切换至发布 tag v0.3.0。Go 仍为 1.27.2，GOEXPERIMENT 为空。
 
 - `make verify` 通过：格式、vet、全量 race 与构建。根目录 `logging_test.go` 验证 Queue/TimeWheel/Session 的 panic 日志字段、错误对象保留、借用 core 不被组件关闭，以及异步文件输出在关闭时排空。
 - 对所固定日志依赖执行了 7 项针对性 race 回归：禁用级别幂等、并发配置/打印、并发启用不丢更新、合法 JSON 兜底、写入故障不 panic、队列溢出报告、并发写入与关闭排空，全部通过；没有将此结果描述成上游全库测试。
@@ -84,3 +84,17 @@ CI 已更新为 Go 1.27.2 默认配置，本机结果不等同于远程 CI 结�
 - Store 增补后重新运行 `make verify` 与 `go test -race -tags=integration -timeout=90s ./discovery`，均通过；实际运行 discovery 示例验证空目录就绪、写入可见、坏 JSON 触发 HTTP 503、修复后恢复 HTTP 200，以及 SIGTERM 正常退出并关闭监听。
 
 测试不能保证所有回调或任意应用业务都没有数据竞争；业务自行保证跨连接共享状态的同步。
+
+## numbox 时间轮与 log v0.3.1 更新验证（2026-10-17）
+
+本轮环境为 Windows amd64、Go 1.27.2，依赖固定 numbox v0.3.0 和 log v0.3.1。
+
+- `go test -count=1 -timeout=90s ./...` 通过，包含时间轮边界、取消/重设、panic 隔离和网络传输用例。首次沙箱运行因回环连接权限失败；允许本机网络后全量重跑通过。
+- 新增回归验证上游类型兼容、错误哨兵、非法 key、nil key 和空轮快速推进；日志适配验证默认 core 快照、原始 panic/error 对象、字段作用域与级别映射。
+- `go run ./examples/timers` 实际输出三次结构化 pulse 日志后正常退出。
+- `go vet ./...`、`go build ./...`、`go mod verify` 通过；`go mod tidy -diff` 无差异。
+- 协议 fuzz 实际运行 10 秒，通过约 262 万次执行，无失败输入；此数字不作为性能比较依据。
+- `gofmt -l .` 无输出，`git diff --check` 通过；GitHub YAML 语法与文档本地文件链接检查通过。
+- 尝试 `CGO_ENABLED=1 go test -race -count=1 -timeout=90s ./...`，因本机缺少 gcc 在编译阶段失败，未完成竞态验证。CI 保留 Ubuntu 上的 race 检查，未将未运行的远端 CI 算作通过。
+
+本轮未追加 etcd、MySQL、Redis 真实实例集成验证，也未变更 GitHub 仓库可见性或创建发布 tag。

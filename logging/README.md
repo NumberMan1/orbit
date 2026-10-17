@@ -1,6 +1,6 @@
 # 日志接入
 
-Orbit 直接使用 `github.com/NumberMan1/log v0.3.0` 的 Logger/field 接口。本目录仅保留接入说明，不再提供本地日志实现或轮转 writer。
+Orbit 直接使用 `github.com/NumberMan1/log v0.3.1` 的 Logger/field 接口。本目录仅保留接入说明，不再提供本地日志实现或轮转 writer。
 
 - Session、Queue、Store 和 TimeWheel 接收 `serverlog.Logger`，仅借用，不关闭。应用拥有底层 `*serverlog.L`，应先停止组件及回调，再 Close 日志 core。
 - 未传 Logger 时，在构造时取得 `serverlog.DefaultLogger()` 的快照；上游默认 core 没有 Printer，会静默丢弃输出。应在构造组件前 Configure，或显式注入独立实例。后续替换默认 core 不会更新已有组件引用。

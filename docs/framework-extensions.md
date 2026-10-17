@@ -69,7 +69,7 @@ Store 不就绪时，Pool 保留既有节点并报告降级，不依据坏数据
 
 `http.WriteJSON` 在提交响应头前完成编码，保留指定状态码并返回写入错误；不再强制改为 200。204/205/304 等不允许正文的状态用标准库直接写响应头。
 
-日志统一使用 `github.com/NumberMan1/log v0.3.0`。组件参数接收 `serverlog.Logger`，结构化字段使用 field 包；应用创建并拥有 core，停止所有组件后 Close。文件输出交给上游 FilePrinter，可配置队列、刷新周期、时间轮转、BlockOnFull/DropNewest 和 OnError，通过 Err/Dropped 观测。原本地 NewRotatingWriter 已移除，按大小限额/备份数不再由框架提供。默认 core 没有输出器，nil Logger 使用前需要应用 Configure。完整装配与关闭限制见 [日志接入](../logging/README.md)。
+日志统一使用 `github.com/NumberMan1/log v0.3.1`。组件参数接收 `serverlog.Logger`，结构化字段使用 field 包；应用创建并拥有 core，停止所有组件后 Close。文件输出交给上游 FilePrinter，可配置队列、刷新周期、时间轮转、BlockOnFull/DropNewest 和 OnError，通过 Err/Dropped 观测。原本地 NewRotatingWriter 已移除，按大小限额/备份数不再由框架提供。默认 core 没有输出器，nil Logger 使用前需要应用 Configure。完整装配与关闭限制见 [日志接入](../logging/README.md)。
 
 `util.Bitmap` 使用 [0,size) 边界，重复 Add/Remove 不改变计数，Load 校验长度和 padding 后才提交，Bytes/Load 都复制数据。旧 NewBitMap(max) 的 max 是包含端点的，新接口传入的是容量，迁移时注意换算。Bitmap 是 owner 管理的结构，没有内置并发锁。
 

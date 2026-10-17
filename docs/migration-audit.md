@@ -50,9 +50,9 @@
 | `util/bitmap.go` | 已补齐 | util.Bitmap | 边界、幂等计数、复制所有权、装载校验 |
 | `util/dfa_filter.go` | 已补齐 | util.Matcher | Unicode、重叠匹配、保留原文本；词表/归一化由应用注入 |
 | `util/ioutil.go` | 已补齐/安全替代 | util.WriteFull、io/os、普通 byte/string 转换 | 拒绝零进展，不迁入 unsafe 可写字符串别名 |
-| `util/loghelper.go` | 已迁移通用部分 | NumberMan1/log v0.3.0 | 结构化字段/异步时间轮转；上报由应用显式配置，不携带业务索引 |
+| `util/loghelper.go` | 已迁移通用部分 | NumberMan1/log v0.3.1 | 结构化字段/异步时间轮转；上报由应用显式配置，不携带业务索引 |
 | `util/timer.go` | 已迁移通用部分 | util.PollTimer/After/Every、标准库 time | 暂停剩余时长、统一 duration；固定时区/5 点刷新属于业务 |
-| `util/timewheel.go` | 已补齐 | util.TimeWheel[K] | 按 key 新增/取消/重设/周期、显式推进；无角色保存字段 |
+| `util/timewheel.go` | 已迁至 numbox v0.3.0 | util.TimeWheel[K] 类型别名与日志适配 | 按 key 新增/取消/重设/周期、显式推进；无角色保存字段 |
 
 原 go.mod/go.sum 不照搬，使用目标项目的 Go 1.27.2 和固定依赖。roserver/baseserver 不是此表的源码范围，不能因为名字带 base 就视为全部业务无关。
 

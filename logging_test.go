@@ -116,6 +116,43 @@ func TestComponentsReportPanicsWithoutClosingBorrowedLogger(t *testing.T) {
 	}
 }
 
+func TestWheelCapturesDefaultLoggerAndPreservesPanicValue(t *testing.T) {
+	previous := serverlog.GetDefaultLogger()
+	defer serverlog.SetDefaultLogger(previous)
+	raw := serverlog.NewLogger()
+	defer raw.Close()
+	printer := &capturePrinter{}
+	raw.AddPrinter(serverlog.LevelSwitchLte(serverlog.TraceLevel), printer)
+	serverlog.SetDefaultLogger(raw)
+	start := time.Unix(0, 0)
+	wheel, err := util.NewTimeWheel[int](start, util.WheelOptions{Tick: time.Millisecond, Slots: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	replacement := serverlog.NewLogger()
+	defer replacement.Close()
+	serverlog.SetDefaultLogger(replacement)
+	original := errors.New("typed panic")
+	if err := wheel.Schedule(1, start, 0, func(time.Time) { panic(original) }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := wheel.Advance(start.Add(time.Millisecond), 1); err != nil {
+		t.Fatal(err)
+	}
+	printer.mu.Lock()
+	defer printer.mu.Unlock()
+	if len(printer.records) != 1 {
+		t.Fatal("wheel did not retain its default logger snapshot", printer.records)
+	}
+	record := printer.records[0]
+	if record.message != "timer callback panic" || record.data["panic"] != original || record.data["stack"] == "" || record.data["stack"] == nil {
+		t.Fatal("upstream diagnostic lost original panic or stack", record)
+	}
+	if printer.closes != 0 {
+		t.Fatal("wheel closed its borrowed logger")
+	}
+}
+
 func TestConfiguredFileLoggerDrainsFrameworkDiagnostics(t *testing.T) {
 	raw, err := serverlog.NewConfiguredLogger(serverlog.Config{Level: "info"})
 	if err != nil {

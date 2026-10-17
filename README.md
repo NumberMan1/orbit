@@ -1,8 +1,26 @@
 # Orbit
 
-从 `RO_Server_Trunk-branch_0.1.39/rocommon` 提取并重构的通用 Go 服务器框架，目标版本为 **Go 1.27.2**。保留网络会话、报文编解码、事件队列、服务生命周期、服务发现及数据连接能力，不包含具体业务。
+[![Go CI](https://github.com/NumberMan1/orbit/actions/workflows/ci.yml/badge.svg)](https://github.com/NumberMan1/orbit/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/NumberMan1/orbit.svg)](https://pkg.go.dev/github.com/NumberMan1/orbit)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+通用 Go 服务器框架，使用 **Go 1.27.2**。提供网络会话、报文编解码、事件队列、服务生命周期、服务发现及数据连接能力，不包含具体业务。
+
+项目从 `RO_Server_Trunk-branch_0.1.39/rocommon` 提取并重构；历史迁移与来源说明见 [迁移文档](docs/migration.md) 和 [第三方说明](THIRD_PARTY_NOTICES.md)。
 
 当前迁移是接口重构，不是旧 `rocommon` 的直接替换包。旧报文的明文封装可兼容；旧 RSA/AES 握手需要同步改造，详见 [迁移说明](docs/migration.md)。
+
+## 安装
+
+仓库公开后，或当前已具有仓库读取权限时，可在 Go 项目中添加：
+
+```sh
+go get github.com/NumberMan1/orbit@latest
+```
+
+生产项目应固定经过验证的 tag 或提交版本。API 文档见 [pkg.go.dev](https://pkg.go.dev/github.com/NumberMan1/orbit)，
+发布记录见 [Releases](https://github.com/NumberMan1/orbit/releases)。公开前文档与徽章可能尚不可用。
+时间轮依赖 `github.com/NumberMan1/numbox v0.3.0`，日志依赖 `github.com/NumberMan1/log v0.3.1`，均通过 Go module 引入。
 
 ## 快速运行
 
@@ -43,7 +61,7 @@ JSON 直接使用标准库 `encoding/json/v2`，Go 1.27.2 无需手动启用实�
 | [storage/redis](storage/redis/README.md) | 单机/集群连接、上下文及 TLS、启动检查 |
 | [config](config/README.md) | 泛型 YAML 加载、大小限制、严格字段与应用校验 |
 | [util](util/README.md) | 时间轮、可暂停计时器、位图、Unicode 匹配、完整写入 |
-| [logging](logging/README.md) | NumberMan1/log v0.3.0 接入指南：结构化字段、异步文件输出与生命周期 |
+| [logging](logging/README.md) | NumberMan1/log v0.3.1 接入指南：结构化字段、异步文件输出与生命周期 |
 
 目录索引：[存储](storage/README.md) · [运行示例](examples/README.md) · [设计文档](docs/README.md) · [CI](.github/workflows/README.md)。
 
@@ -62,3 +80,11 @@ make integration  # 独立 etcd 实例，以及可配置的 MySQL/Redis 集成�
 进一步阅读：[架构与使用约定](docs/architecture.md) · [迁移对照与已修复问题](docs/migration.md) · [Go 1.27.2 适配](docs/go127.md) · [Store 使用说明](docs/discovery-store.md) · [etcd 实现对比](docs/etcd-comparison.md)。
 
 更多接入：[时间轮与定时器](docs/timers.md) · [补充框架能力](docs/framework-extensions.md) · [rocommon 逐文件核对](docs/migration-audit.md)。可运行 `go run ./examples/timers` 查看时间轮与串行 Queue 的组合。
+
+## 参与与许可
+
+[贡献指南](CONTRIBUTING.md) · [行为准则](CODE_OF_CONDUCT.md) · [获取帮助](SUPPORT.md) ·
+[安全政策](SECURITY.md) · [变更记录](CHANGELOG.md) · [维护与发布](MAINTAINERS.md)。
+
+项目保留 [MIT 许可证](LICENSE)。第三方依赖保留自身许可；历史迁移内容的来源与公开前核对事项见
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
