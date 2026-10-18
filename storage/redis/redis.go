@@ -17,11 +17,18 @@ type Options struct {
 	DB        int
 	Cluster   bool
 	TLS       *tls.Config
+	// Retries explicitly opts into replay after ambiguous network failures.
+	// Zero disables retries; positive values are unsafe for non-idempotent writes
+	// unless the application provides its own deduplication protocol.
+	Retries int
+	// ClusterRedirects also retries network failures in the v8 cluster client.
+	// Zero disables automatic redirects/replays; opt in deliberately for clusters.
+	ClusterRedirects int
 }
 
 // Open validates options and pings before returning. The caller must Close.
 func Open(ctx context.Context, o Options) (rdb.UniversalClient, error) {
-	if len(o.Addresses) == 0 || o.DB < 0 || (o.Cluster && o.DB != 0) || (!o.Cluster && len(o.Addresses) != 1) {
+	if len(o.Addresses) == 0 || o.DB < 0 || o.Retries < 0 || o.ClusterRedirects < 0 || (o.Cluster && o.DB != 0) || (!o.Cluster && (len(o.Addresses) != 1 || o.ClusterRedirects != 0)) {
 		return nil, errors.New("redis: invalid addresses, database or cluster options")
 	}
 	for _, a := range o.Addresses {
@@ -34,10 +41,17 @@ func Open(ctx context.Context, o Options) (rdb.UniversalClient, error) {
 		tlsConfig = o.TLS.Clone()
 	}
 	var client rdb.UniversalClient
+	retries, redirects := o.Retries, o.ClusterRedirects
+	if retries == 0 {
+		retries = -1
+	}
+	if redirects == 0 {
+		redirects = -1
+	}
 	if o.Cluster {
-		client = rdb.NewClusterClient(&rdb.ClusterOptions{Addrs: append([]string(nil), o.Addresses...), Username: o.Username, Password: o.Password, TLSConfig: tlsConfig, DialTimeout: 5 * time.Second, ReadTimeout: 3 * time.Second, WriteTimeout: 3 * time.Second})
+		client = rdb.NewClusterClient(&rdb.ClusterOptions{MaxRetries: retries, MaxRedirects: redirects, Addrs: append([]string(nil), o.Addresses...), Username: o.Username, Password: o.Password, TLSConfig: tlsConfig, DialTimeout: 5 * time.Second, ReadTimeout: 3 * time.Second, WriteTimeout: 3 * time.Second})
 	} else {
-		client = rdb.NewClient(&rdb.Options{Addr: o.Addresses[0], Username: o.Username, Password: o.Password, DB: o.DB, TLSConfig: tlsConfig, DialTimeout: 5 * time.Second, ReadTimeout: 3 * time.Second, WriteTimeout: 3 * time.Second})
+		client = rdb.NewClient(&rdb.Options{MaxRetries: retries, Addr: o.Addresses[0], Username: o.Username, Password: o.Password, DB: o.DB, TLSConfig: tlsConfig, DialTimeout: 5 * time.Second, ReadTimeout: 3 * time.Second, WriteTimeout: 3 * time.Second})
 	}
 	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()

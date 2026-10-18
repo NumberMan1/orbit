@@ -58,7 +58,8 @@ func DecodeHandler(registry *codec.Registry, handler func(context.Context, Messa
 type Poster interface{ Post(func()) error }
 
 // Queued runs a handler on an application queue. Enqueue errors reach Session.Run;
-// asynchronous handler errors close that session. It copies the frame payload.
+// asynchronous handler errors close that session unless Execute owns completion.
+// It copies the frame payload. Post must reject without accepting on error.
 func Queued(queue Poster, handler Handler) (Handler, error) {
 	if queue == nil || handler == nil {
 		return nil, errors.New("socket: queue and handler required")
@@ -70,18 +71,19 @@ func Queued(queue Poster, handler Handler) (Handler, error) {
 		if !s.retainWork(true) {
 			return ErrClosed
 		}
+		run, reject := s.tracked(ctx, func() error {
+			observe.Emit(s.options.Observer, observe.Event{Kind: observe.QueueWait, Duration: time.Since(queuedAt), MessageID: f.ID, TraceID: observe.TraceID(ctx)})
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			return s.handle(handler, ctx, f)
+		})
 		err := queue.Post(func() {
 			defer s.releaseWork()
-			defer s.recoverPanic()
-			observe.Emit(s.options.Observer, observe.Event{Kind: observe.QueueWait, Duration: time.Since(queuedAt), MessageID: f.ID, TraceID: observe.TraceID(ctx)})
-			if ctx.Err() != nil {
-				return
-			}
-			if err := s.handle(handler, ctx, f); err != nil {
-				s.close(err)
-			}
+			run()
 		})
 		if err != nil {
+			reject()
 			s.releaseWork()
 		}
 		return err

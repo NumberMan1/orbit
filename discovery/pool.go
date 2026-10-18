@@ -25,6 +25,7 @@ type peer struct {
 	descriptor Descriptor
 	component  orbit.Component
 	started    bool
+	generation uint64
 }
 
 // Pool reconciles a Store directory into caller-created components (typically
@@ -37,6 +38,8 @@ type Pool struct {
 	options        PoolOptions
 	mu             sync.Mutex
 	peers          map[string]peer
+	routing        *routes
+	generation     uint64
 	used           bool
 	cancel         context.CancelFunc
 	done           chan struct{}
@@ -125,6 +128,7 @@ func (p *Pool) run(ctx context.Context) {
 		}
 		p.mu.Lock()
 		clear(p.peers)
+		p.routing = nil
 		p.err = terminal
 		if terminal != nil {
 			p.lastError = terminal
@@ -184,6 +188,9 @@ func (p *Pool) reconcile(ctx context.Context) error {
 		if alive && ok && d.Name == old.descriptor.Name && d.Address == old.descriptor.Address && samePeerMetadata(d.Metadata, old.descriptor.Metadata) {
 			// A drain announcement changes routing only; preserve in-flight calls.
 			p.mu.Lock()
+			if !maps.Equal(old.descriptor.Metadata, d.Metadata) {
+				p.routing = nil
+			}
 			old.descriptor = copyDescriptor(d)
 			p.peers[id] = old
 			p.mu.Unlock()
@@ -198,6 +205,7 @@ func (p *Pool) reconcile(ctx context.Context) error {
 		}
 		p.mu.Lock()
 		delete(p.peers, id)
+		p.routing = nil
 		p.mu.Unlock()
 	}
 	ids := slices.Sorted(maps.Keys(desired))
@@ -219,7 +227,10 @@ func (p *Pool) reconcile(ctx context.Context) error {
 		}
 		// Index before Start so even a panic is cleaned up by the run defer.
 		p.mu.Lock()
-		p.peers[id] = peer{descriptor: d, component: component}
+		p.generation++
+		generation := p.generation
+		p.peers[id] = peer{descriptor: d, component: component, generation: generation}
+		p.routing = nil
 		p.mu.Unlock()
 		if err := component.Start(ctx); err != nil {
 			stopCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), p.options.StopTimeout)
@@ -228,12 +239,14 @@ func (p *Pool) reconcile(ctx context.Context) error {
 			if cleanupErr == nil {
 				p.mu.Lock()
 				delete(p.peers, id)
+				p.routing = nil
 				p.mu.Unlock()
 			}
 			result = errors.Join(result, fmt.Errorf("start %s: %w", id, err), cleanupErr)
 		} else {
 			p.mu.Lock()
-			p.peers[id] = peer{descriptor: d, component: component, started: true}
+			p.peers[id] = peer{descriptor: d, component: component, started: true, generation: generation}
+			p.routing = nil
 			p.mu.Unlock()
 		}
 	}

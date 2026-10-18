@@ -20,6 +20,7 @@ go run ./cmd/orbitgen -in examples/gateway/protocol/messages.json -out examples/
 
 - 使用已有 Go struct 类型；codec 为 json 或 protobuf。Protobuf 类型先用 protoc 生成，本工具不生成模型或修改线协议。
 - 外部类型可配置 `"imports":{"pb":"example.com/project/protocol"}`，type 写为 `pb.Request`；别名不得覆盖工具自身导入名。
+- 注册函数局部参数会避开用户类型和导入别名（例如 r）。与 RegisterMessages、RegisterHandlers、Handlers 或工具导入名冲突的本地类型/别名会在生成阶段报错。
 - ID 必须在 1..65535，ID/type 不重复；handler 可省略，提供时必须是唯一的导出标识符。
 - manifest 最大 1 MiB，拒绝未知字段、重复 JSON 字段、未使用导入和非法标识符。
 - 输出按消息 ID 排序并使用 gofmt；`-check` 只检查文件一致性，不写文件，可用于 CI。

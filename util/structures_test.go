@@ -66,7 +66,7 @@ func TestBitmapCountBoundsAndOwnership(t *testing.T) {
 }
 func TestMatcherOverlapsUnicodeAndPreservesText(t *testing.T) {
 	m := NewMatcher([]string{"aba", "ba", "坏词", "坏", ""})
-	if got := m.Find("ababa"); !reflect.DeepEqual(got, []Match{{0, 3}, {1, 3}, {2, 5}, {3, 5}}) {
+	if got := m.Find("ababa"); !reflect.DeepEqual(got, []Match{{Start: 0, End: 3}, {Start: 1, End: 3}, {Start: 2, End: 5}, {Start: 3, End: 5}}) {
 		t.Fatal(got)
 	}
 	if got := m.Replace("  坏词 & ababa!  ", '*'); got != "  ** & *****!  " {

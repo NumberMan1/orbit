@@ -62,6 +62,9 @@ func (h *Heartbeat) Run(ctx context.Context) error {
 		start := time.Now()
 		frame, err := h.client.Call(probe, rpc.Frame{ID: h.options.PingID}, h.options.PongID)
 		cancel()
+		if errors.Is(err, socket.ErrDraining) {
+			return nil
+		}
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -110,6 +113,7 @@ func RespondHeartbeat(pingID, pongID uint16, next socket.Handler) (socket.Handle
 		return nil, errors.New("request: invalid heartbeat IDs")
 	}
 	return func(ctx context.Context, s *socket.Session, f rpc.Frame) error {
+		s.AllowDuringDrain(pingID)
 		if f.ID != pingID {
 			if next != nil {
 				return next(ctx, s, f)

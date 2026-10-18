@@ -5,6 +5,15 @@
 
 ## 未发布
 
+### 审查修复
+
+- request.Server 等待 Queued/Async 实际完成，保留请求 context 和并发名额；Session 断连后先等待已接受工作，再执行 OnClose/清理状态。Drain 继续接收控制/响应帧并跟踪出站 Call；心跳正常退出排空。
+- Picker/Balancer 为每个服务独立轮询；临时未就绪保留熔断冷却，成员变更/断线清理旧状态。路由目录只在变化时复制和排序。
+- Redis 默认禁用隐式命令重放，新增显式 Retries/ClusterRedirects；集群 MOVED/ASK 跟随需显式启用，并承担网络错误重试可能重复写的风险。
+- 配置拒绝 nil 解码结果；Live 普通数据快照直接深拷贝已校验值，带隐藏状态的类型保留 YAML 隔离。
+- HTTP 自定义默认 RoundTripper 返回错误而非 panic，增加借用传输的 NewClientWithTransport；orbitgen 避开局部参数与导入/类型重名，提前拒绝生成声明冲突。
+- util 的 Bitmap、Matcher、PollTimer、After/Every、WriteFull 收敛为 numbox v0.4.1 兼容入口，保留现有 API。
+
 ### 故障处理与运行扩展
 
 - 增加 request 心跳应答、连续超时判定、RTT 与显式失活断线选项，共用一个 Client 的唯一序号空间。

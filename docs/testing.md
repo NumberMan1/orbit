@@ -108,7 +108,7 @@ CI 已更新为 Go 1.27.2 默认配置，本机结果不等同于远程 CI 结�
 - `go vet ./...`、Windows 原生 `go build ./...`、`go mod verify` 通过，`go mod tidy -diff` 无差异；Linux amd64 与 macOS arm64 的 `CGO_ENABLED=0` 交叉构建通过，未将交叉构建视为目标平台原生测试。
 - 协议 fuzz 运行 10 秒，通过约 133 万次执行，无失败输入；生成器 `-check` 通过，已加入 `make verify`。本次执行量不作为性能比较依据。
 - `gofmt -l .` 无输出，`git diff --check` 与文档本地文件链接检查通过。
-- 尝试 `CGO_ENABLED=1 go test -race -count=1 -timeout=90s ./...`，因缺少 gcc 在编译阶段失败；竞态验证未完成，不能将本次检查视为完整 `make verify` 通过。
+- 尝试 `CGO_ENABLED=1 go test -race -count=1 -timeout=90s ./...`，因缺少 gcc 在编译阶段失败 竞态验证未完成，不能将本次检查视为完整 `make verify` 通过。
 - 执行 `go test -v -tags=integration -timeout=90s ./discovery ./storage/...`；非外部实例用例通过。五项真实 etcd 用例因缺少 etcd 可执行文件跳过，MySQL/Redis 各一项实例用例因未配置测试连接跳过，未完成真实基础设施集成验证。
 
 网关示例使用进程内静态目录及真实回环 TCP/HTTP，不依赖外部服务。远程 CI、持续负载与生产部署验证未在本轮执行。
@@ -152,3 +152,20 @@ CI 已更新为 Go 1.27.2 默认配置，本机结果不等同于远程 CI 结�
 - `git diff --check` 与文档本地链接检查通过。
 
 观测提供关联 ID 和适配接口，不是完整 span/OTLP 平台。未将上述检查视为持续负载、多节点故障切换、目标部署性能或远程 CI 验证。
+
+## 全量审查修复验证（2026-10-18）
+
+使用 Windows amd64、Go 1.27.2、`CGO_ENABLED=1`。Orbit 的正式依赖仍为 numbox v0.4.1，无 go.mod/go.sum 变更或本地 replace。
+
+- 全量 `go test -race -count=1 -timeout=90s ./...` 通过；随后补充的快照隐藏状态隔离、路由清理、生成器/HTTP 边界和排队取消用例，已对受影响包再次运行 race 并通过。
+- 回归覆盖请求排队及嵌套投递保留 context/Pending、取消后队列释放前保留名额、业务错误通过 OnError 回包且连接可继续使用、普通断线等待 Async 清理、排空期间远端取消和出站响应继续处理、多服务轮询公平性及就绪抖动不绕过熔断。
+- Redis 故障注入服务器在执行 INCR 后丢弃回复：默认只执行一次并返回错误，显式 Retries=1 时执行两次，确认重放必须由调用方选择。新增配置 null、快照深拷贝及隐藏状态、HTTP 自定义传输、实际编译生成绑定的测试。
+- `go test -race -count=1 -v -tags=integration -timeout=90s ./discovery` 通过，五项真实 etcd 测试实际执行、无 skip。使用此前验证的 etcd v3.7.2 程序，每项测试启动临时实例。
+- `go test -race -count=1 -v -tags=integration -timeout=90s ./storage/redis` 通过，真实 Redis PING 和重试故障测试均执行、无 skip。Redis 8.2.10 使用独立临时 Podman 容器与随机回环端口，测试后删除容器及测试卷；未改动 MySQL，本轮未重跑其真实实例测试。
+- `go vet ./...`、`go build ./...`、orbitgen `-check`、`go mod verify` 与 `go mod tidy -diff` 通过。工具类型别名引起的测试非具名结构体初始化 vet 报告已修复并复验。
+- 报文和元数据 fuzz 各运行 10 秒并通过，分别执行 1,399,496 与 569,963 次；执行次数不用于性能比较。
+- 实际运行 gateway `-self-test` 与 runtime 示例均成功：请求交替命中两台后端并排空退出，配置版本从 1 切换到 2，实体任务维持顺序。
+- 基准使用普通轮询、已预热连接和无元数据的描述符：100/1000 节点的 Balancer.Acquire 为约 0.93–1.23 微秒、208 B、3 次分配/次。Live.Snapshot 的 3/100 项映射分别约 1.02–1.04 微秒/40–69 微秒，528 B/8,248 B；并发运行其他验证导致时间有波动，不视为生产延迟承诺。
+- numbox 的 Matcher 优化在独立工作区完成：全量 race、vet、无 CGo 构建通过；16K 公共前缀不匹配基准约 0.53–0.65 毫秒、零分配。另以仓库外临时 Go workspace 明确绑定本地 numbox，Orbit util race 通过，临时文件已清理。此项仅为本地联调，正式 v0.4.1 尚不含算法优化；需发布新 tag 后升级 Orbit 依赖。
+
+本轮未提交或推送代码，未发布新 tag。先前工作区已有的测试记录文字改动保留。

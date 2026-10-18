@@ -38,9 +38,10 @@ options := socket.Options{
 自定义 Quiesce 必须立即返回，Drain/Stop 必须遵守 context；Go 无法强制结束不返回的用户回调。
 
 TCP Quiesce 关闭监听并封闭会话集合；WS 拒绝新 Upgrade，HTTP 拒绝新请求。
-Session.Drain 拒绝新入站回调，等待已开始的同步回调、OnOpen、通过 Queued 接受的回调以及待发帧。
+Session.Drain 忽略新的业务帧，继续处理登记的取消、心跳和响应帧；等待已开始的同步回调、OnOpen、通过 Queued/Async 接受的回调、Client.Call 及待发帧。
 发送队列排空后关闭连接，超时则强制关闭。调用方不能在自身回调里同步等待 Drain；后台发送任务须由应用停止，
 自行创建的 goroutine 不属于自动跟踪的请求。已断开且没有未完成工作的会话视为已排空。
+普通 Close 仍立即取消和关闭传输，但 OnClose、Run 返回和状态清理等待已接受工作结束；不合作的回调会延迟最终清理，外层 Stop 超时不能强制释放仍被回调使用的依赖。
 
 排空仅意味着帧写入传输层，不等于对端确认或业务成功。半断连接、写错误、主动断线会终止请求；需要可靠交付时另行定义 ACK、幂等与持久化策略。
 网络组件的依赖应在它之前加入 App，例如 `backend → queue → health → listener`，保证网关排空时后端连接和队列仍然可用。

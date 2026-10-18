@@ -49,11 +49,14 @@ type Options struct {
 	SendQueue    int
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
+	// DrainIDs permits only these negotiated control/response IDs during drain.
+	DrainIDs []uint16
 	// Logger is borrowed. Nil captures serverlog.DefaultLogger at construction;
 	// configure its printers first. The caller closes the core after all sessions.
 	Logger serverlog.Logger
 	// OnOpen runs before the first inbound frame. OnClose runs after both I/O
-	// loops exit. Hooks are serial per session and concurrent across sessions.
+	// loops and accepted Queued/Async work exit. Hooks are serial per session
+	// and concurrent across sessions. Callbacks must not wait for their own Done.
 	OnOpen  func(context.Context, *Session) error
 	OnClose func(context.Context, *Session, error)
 	// BeforeSend transforms an owned frame before enqueueing. It can run
@@ -62,6 +65,7 @@ type Options struct {
 }
 
 func (o Options) Normalize() (Options, error) {
+	o.DrainIDs = append([]uint16(nil), o.DrainIDs...)
 	if err := o.InboundRate.validate(); err != nil {
 		return o, err
 	}
@@ -107,6 +111,7 @@ type Session struct {
 	mu                      sync.Mutex
 	closed                  bool
 	draining                bool
+	drainIDs                map[uint16]bool
 	pendingWrites, inFlight int
 	changed                 chan struct{}
 	values                  map[string]any
@@ -127,7 +132,9 @@ func NewSession(parent context.Context, transport Transport, options Options) (*
 		return nil, err
 	}
 	ctx, cancel := context.WithCancelCause(parent)
-	return &Session{id: id, transport: transport, options: o, queue: make(chan rpc.Frame, o.SendQueue), ctx: ctx, cancel: cancel, done: make(chan struct{}), changed: make(chan struct{})}, nil
+	s := &Session{id: id, transport: transport, options: o, queue: make(chan rpc.Frame, o.SendQueue), ctx: ctx, cancel: cancel, done: make(chan struct{}), changed: make(chan struct{})}
+	s.AllowDuringDrain(o.DrainIDs...)
+	return s, nil
 }
 
 func sessionID(generator func() (uint64, error)) (id uint64, err error) {
@@ -150,7 +157,7 @@ func sessionID(generator func() (uint64, error)) (id uint64, err error) {
 func (s *Session) ID() uint64               { return s.id }
 func (s *Session) Context() context.Context { return s.ctx }
 
-// Done closes when Run returns, after all I/O and hooks finish. If Run has not
+// Done closes when Run returns, after all I/O, accepted work and hooks finish. If Run has not
 // been called, use Context().Done() to observe Close instead.
 func (s *Session) Done() <-chan struct{} { return s.done }
 
@@ -319,9 +326,15 @@ func (s *Session) Run(handler Handler) error {
 				m.receivedBytes.Add(uint64(len(f.Payload)))
 			}
 			{
-				if !s.retainWork(false) {
-					<-s.ctx.Done()
+				if !bucket.allow(s.options.InboundRate, time.Now()) {
+					if m := s.options.Metrics; m != nil {
+						m.rejected.Add(1)
+					}
+					s.close(ErrRateLimited)
 					return
+				}
+				if !s.retainFrame(f.ID) {
+					continue
 				}
 				err := func() (err error) {
 					defer s.releaseWork()
@@ -331,12 +344,6 @@ func (s *Session) Run(handler Handler) error {
 						}
 					}()
 					defer s.recoverPanic()
-					if !bucket.allow(s.options.InboundRate, time.Now()) {
-						if m := s.options.Metrics; m != nil {
-							m.rejected.Add(1)
-						}
-						return ErrRateLimited
-					}
 					if handler == nil {
 						return nil
 					}
@@ -351,6 +358,15 @@ func (s *Session) Run(handler Handler) error {
 	}()
 	s.close(context.Cause(s.ctx))
 	wg.Wait()
+	// Close cancels I/O immediately, but cleanup must not race accepted work.
+	s.waitWork()
+	s.mu.Lock()
+	for len(s.queue) > 0 {
+		<-s.queue
+	}
+	s.pendingWrites = 0
+	s.signalLocked()
+	s.mu.Unlock()
 	if s.options.OnClose != nil {
 		func() { defer s.recoverPanic(); s.options.OnClose(s.ctx, s, context.Cause(s.ctx)) }()
 	}

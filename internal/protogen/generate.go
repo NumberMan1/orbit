@@ -47,11 +47,13 @@ func Generate(reader io.Reader) ([]byte, error) {
 	if !token.IsIdentifier(m.Package) || m.Package == "_" || len(m.Messages) == 0 {
 		return nil, errors.New("orbitgen: package and messages required")
 	}
-	reserved := map[string]bool{"context": true, "fmt": true, "codec": true, "socket": true}
+	reserved := map[string]bool{"context": true, "fmt": true, "codec": true, "socket": true, "RegisterMessages": true, "RegisterHandlers": true, "Handlers": true, "nil": true, "error": true}
+	identifiers := make(map[string]bool)
 	for alias, path := range m.Imports {
 		if !token.IsIdentifier(alias) || alias == "_" || reserved[alias] || path == "" || strings.ContainsAny(path, "\"\\\n\r\t ") {
 			return nil, errors.New("orbitgen: invalid import")
 		}
+		identifiers[alias] = true
 	}
 	ids, types, handlers, usedImports := map[uint16]bool{}, map[string]bool{}, map[string]bool{}, map[string]bool{}
 	for _, msg := range m.Messages {
@@ -73,6 +75,11 @@ func Generate(reader io.Reader) ([]byte, error) {
 				return nil, errors.New("orbitgen: missing type import")
 			}
 			usedImports[parts[0]] = true
+		} else {
+			if reserved[msg.Type] || m.Imports[msg.Type] != "" {
+				return nil, errors.New("orbitgen: type conflicts with generated declaration or import")
+			}
+			identifiers[msg.Type] = true
 		}
 		if msg.Codec != "json" && msg.Codec != "protobuf" {
 			return nil, errors.New("orbitgen: unknown codec")
@@ -102,13 +109,17 @@ func Generate(reader io.Reader) ([]byte, error) {
 	for _, alias := range aliases {
 		fmt.Fprintf(&out, "%s %s\n", alias, strconv.Quote(m.Imports[alias]))
 	}
-	out.WriteString(")\n// RegisterMessages registers message types in ID order; use a fresh registry.\nfunc RegisterMessages(r *codec.Registry) error {\n")
+	parameter := "r"
+	for i := 1; identifiers[parameter]; i++ {
+		parameter = fmt.Sprintf("registry%d", i)
+	}
+	fmt.Fprintf(&out, ")\n// RegisterMessages registers message types in ID order; use a fresh registry.\nfunc RegisterMessages(%s *codec.Registry) error {\n", parameter)
 	for _, msg := range m.Messages {
 		codecName := "JSON"
 		if msg.Codec == "protobuf" {
 			codecName = "Protobuf"
 		}
-		fmt.Fprintf(&out, "if err:=r.Register(%d, (*%s)(nil), codec.%s{}); err!=nil{return err}\n", msg.ID, msg.Type, codecName)
+		fmt.Fprintf(&out, "if err:=%s.Register(%d, (*%s)(nil), codec.%s{}); err!=nil{return err}\n", parameter, msg.ID, msg.Type, codecName)
 	}
 	out.WriteString("return nil\n}\n")
 	if len(handlers) > 0 {

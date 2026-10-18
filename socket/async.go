@@ -12,7 +12,8 @@ import (
 // Async runs accepted handlers concurrently, with a shared hard limit and no
 // waiting queue. Install under Run (not as an independent background submitter).
 // Payloads are copied, work is included in Session.Drain, and errors/panics close
-// the session. Handlers must honor ctx. Same-session message order is not retained.
+// the session unless Execute owns completion. Handlers must honor ctx.
+// Same-session message order is not retained.
 func Async(limit int, handler Handler) (Handler, error) {
 	if limit < 1 || handler == nil {
 		return nil, errors.New("socket: positive async limit and handler required")
@@ -33,13 +34,11 @@ func Async(limit int, handler Handler) (Handler, error) {
 			return ErrClosed
 		}
 		f.Payload = bytes.Clone(f.Payload)
+		run, _ := s.tracked(ctx, func() error { return s.handle(handler, ctx, f) })
 		go func() {
 			defer active.Add(-1)
 			defer s.releaseWork()
-			defer s.recoverPanic()
-			if err := s.handle(handler, ctx, f); err != nil {
-				s.close(err)
-			}
+			run()
 		}()
 		return nil
 	}, nil

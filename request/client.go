@@ -95,6 +95,7 @@ func New(session *socket.Session, options Options) (*Client, error) {
 		c.raw[id] = true
 	}
 	c.stop = context.AfterFunc(session.Context(), func() { c.fail(errors.Join(ErrClosed, context.Cause(session.Context()))) })
+	session.AllowDuringDrain(options.ResponseIDs...)
 	return c, nil
 }
 
@@ -117,6 +118,14 @@ func (c *Client) Status() Status {
 // error means a matching frame arrived, not that application processing succeeded.
 // Never call it on the same session's synchronous read handler: that blocks replies.
 func (c *Client) Call(parent context.Context, frame rpc.Frame, expectedResponseID uint16) (response rpc.Frame, callErr error) {
+	finish, err := c.session.TrackWork()
+	if err != nil {
+		if errors.Is(err, socket.ErrClosed) {
+			err = errors.Join(ErrClosed, err)
+		}
+		return rpc.Frame{}, err
+	}
+	defer finish()
 	ctx, cancel := context.WithTimeout(parent, c.options.Timeout)
 	defer cancel()
 	started := time.Now()

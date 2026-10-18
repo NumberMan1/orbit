@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"reflect"
 
 	"gopkg.in/yaml.v3"
 )
@@ -21,8 +22,22 @@ func decode[T interface{ Validate() error }](b []byte) (T, error) {
 		}
 		return v, err
 	}
-	if err := v.Validate(); err != nil {
+	if err := validate(v); err != nil {
 		return v, err
 	}
 	return v, nil
+}
+
+func validate[T interface{ Validate() error }](v T) error {
+	r := reflect.ValueOf(v)
+	if !r.IsValid() {
+		return errors.New("config: null configuration")
+	}
+	switch r.Kind() {
+	case reflect.Pointer, reflect.Interface, reflect.Map, reflect.Slice:
+		if r.IsNil() {
+			return errors.New("config: null configuration")
+		}
+	}
+	return v.Validate()
 }

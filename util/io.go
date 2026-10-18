@@ -1,28 +1,9 @@
 package util
 
 import (
-	"errors"
+	"github.com/NumberMan1/numbox/utils/ioutil"
 	"io"
 )
 
-// WriteFull retries short writes, but rejects a writer making no progress or
-// reporting impossible byte counts. It never treats a partial write as success.
-func WriteFull(writer io.Writer, data []byte) error {
-	if writer == nil {
-		return errors.New("util: writer required")
-	}
-	for len(data) > 0 {
-		n, err := writer.Write(data)
-		if n < 0 || n > len(data) {
-			return errors.New("util: invalid write count")
-		}
-		if err != nil {
-			return err
-		}
-		if n == 0 {
-			return io.ErrNoProgress
-		}
-		data = data[n:]
-	}
-	return nil
-}
+// WriteFull delegates short-write and progress checks to numbox.
+func WriteFull(writer io.Writer, data []byte) error { return ioutil.WriteFull(writer, data) }

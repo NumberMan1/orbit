@@ -2,9 +2,7 @@ package discovery
 
 import (
 	"errors"
-	"hash/fnv"
-	"sort"
-	"sync/atomic"
+	"sync"
 
 	"github.com/NumberMan1/orbit/socket"
 )
@@ -14,6 +12,7 @@ var ErrNoPeer = errors.New("discovery: no ready peer")
 
 // SessionProvider is implemented by socket.Connector. Components may add their
 // own application readiness check before reporting a session as available.
+// Session must return promptly and must not reenter the selector.
 type SessionProvider interface {
 	Session() (*socket.Session, bool)
 }
@@ -26,8 +25,9 @@ const DrainingMetadata = "orbit.draining"
 // nonempty affinity uses rendezvous hashing over stable descriptor IDs.
 // Do not copy after use. Picking never retries or replays a request.
 type Picker struct {
-	pool *Pool
-	next atomic.Uint64
+	pool   *Pool
+	mu     sync.Mutex
+	cursor routeCursor
 }
 
 // NewPicker binds selection to the pool's current managed peers and Store health.
@@ -45,43 +45,34 @@ func (p *Picker) Pick(name, affinity string) (*socket.Session, Descriptor, error
 	if !p.pool.store.Status().Ready {
 		return nil, Descriptor{}, ErrNoPeer
 	}
-	type candidate struct {
-		session    *socket.Session
-		descriptor Descriptor
-	}
-	var candidates []candidate
-	for _, peer := range p.pool.snapshot() {
-		if !peer.started || peer.descriptor.Metadata[DrainingMetadata] == "true" || (name != "" && name != peer.descriptor.Name) {
+	r := p.pool.routes()
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	start := p.cursor.start(r, name)
+	peers := r.groups[name]
+	var chosen *socket.Session
+	var descriptor Descriptor
+	var best uint64
+	for offset := range len(peers) {
+		index := (start + offset) % len(peers)
+		if affinity != "" {
+			index = offset
+		}
+		peer := peers[index]
+		s := readySession(peer)
+		if s == nil {
 			continue
 		}
-		provider, ok := peer.component.(SessionProvider)
-		if !ok {
-			continue
+		if affinity == "" {
+			p.cursor.next[name] = index + 1
+			return s, copyDescriptor(peer.descriptor), nil
 		}
-		s, ok := provider.Session()
-		if ok && s != nil && s.Context().Err() == nil && !s.Status().Draining {
-			candidates = append(candidates, candidate{s, peer.descriptor})
+		if score := routeScore(affinity, peer.descriptor.ID); chosen == nil || score > best {
+			chosen, descriptor, best = s, peer.descriptor, score
 		}
 	}
-	if len(candidates) == 0 {
+	if chosen == nil {
 		return nil, Descriptor{}, ErrNoPeer
 	}
-	sort.Slice(candidates, func(i, j int) bool { return candidates[i].descriptor.ID < candidates[j].descriptor.ID })
-	index := 0
-	if affinity == "" {
-		index = int((p.next.Add(1) - 1) % uint64(len(candidates)))
-	} else {
-		var best uint64
-		for i, candidate := range candidates {
-			h := fnv.New64a()
-			_, _ = h.Write([]byte(affinity))
-			_, _ = h.Write([]byte{0})
-			_, _ = h.Write([]byte(candidate.descriptor.ID))
-			if score := h.Sum64(); i == 0 || score > best {
-				index, best = i, score
-			}
-		}
-	}
-	chosen := candidates[index]
-	return chosen.session, copyDescriptor(chosen.descriptor), nil
+	return chosen, copyDescriptor(descriptor), nil
 }

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	stdhttp "net/http"
+	"reflect"
 	"time"
 )
 
@@ -20,11 +21,34 @@ func DecodeJSON(w stdhttp.ResponseWriter, req *stdhttp.Request, dst any, limit i
 	return json.UnmarshalRead(stdhttp.MaxBytesReader(w, req.Body, limit), dst, json.RejectUnknownMembers(true))
 }
 
+// NewClient owns a clone of the default *http.Transport. Custom global
+// RoundTrippers require explicit injection through NewClientWithTransport.
 func NewClient(timeout time.Duration) (*stdhttp.Client, error) {
 	if timeout <= 0 {
 		return nil, errors.New("http: positive client timeout required")
 	}
-	return &stdhttp.Client{Timeout: timeout, Transport: stdhttp.DefaultTransport.(*stdhttp.Transport).Clone()}, nil
+	transport, ok := stdhttp.DefaultTransport.(*stdhttp.Transport)
+	if !ok || transport == nil {
+		return nil, errors.New("http: custom DefaultTransport; use NewClientWithTransport")
+	}
+	return &stdhttp.Client{Timeout: timeout, Transport: transport.Clone()}, nil
+}
+
+// NewClientWithTransport borrows a caller-owned transport, allowing tracing,
+// proxying and custom pooling without modifying process-global defaults.
+// The caller manages its lifetime, including shared idle connections.
+func NewClientWithTransport(timeout time.Duration, transport stdhttp.RoundTripper) (*stdhttp.Client, error) {
+	if timeout <= 0 || transport == nil {
+		return nil, errors.New("http: positive timeout and transport required")
+	}
+	v := reflect.ValueOf(transport)
+	switch v.Kind() {
+	case reflect.Pointer, reflect.Func, reflect.Map, reflect.Slice, reflect.Chan, reflect.Interface:
+		if v.IsNil() {
+			return nil, errors.New("http: nil transport")
+		}
+	}
+	return &stdhttp.Client{Timeout: timeout, Transport: transport}, nil
 }
 
 // DoJSON supports all HTTP methods and returns non-2xx statuses as errors.

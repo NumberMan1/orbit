@@ -82,7 +82,7 @@ func NewServer(options ServerOptions, handler socket.Handler) (*Server, error) {
 		}()
 		err = call.ctx.Err()
 		if err == nil {
-			err = handler(call.ctx, session, f)
+			err = socket.Execute(call.ctx, session, f, handler)
 		}
 		outcome = err
 		if err != nil && options.OnError != nil {
@@ -106,6 +106,9 @@ func (s *Server) Pending() int { s.mu.Lock(); defer s.mu.Unlock(); return len(s.
 
 func (s *Server) Handler(next socket.Handler) socket.Handler {
 	return func(ctx context.Context, session *socket.Session, f rpc.Frame) error {
+		if s.options.CancelID != 0 {
+			session.AllowDuringDrain(s.options.CancelID)
+		}
 		key := callKey{session, f.Sequence}
 		if s.options.CancelID != 0 && f.ID == s.options.CancelID {
 			if f.Sequence == 0 || len(f.Payload) != 0 {

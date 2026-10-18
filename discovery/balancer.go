@@ -3,8 +3,6 @@ package discovery
 import (
 	"context"
 	"errors"
-	"hash/fnv"
-	"sort"
 	"sync"
 	"time"
 
@@ -19,10 +17,12 @@ type BalancerOptions struct {
 	Failed func(error) bool
 }
 type circuit struct {
-	failures int
-	until    time.Time
-	probe    bool
-	epoch    uint64
+	id         string
+	generation uint64
+	failures   int
+	until      time.Time
+	probe      bool
+	epoch      uint64
 }
 
 // Selection reserves a half-open probe when applicable. Complete MUST be called
@@ -38,13 +38,14 @@ func (s *Selection) Complete(err error) { s.complete(err) }
 
 // Balancer adds per-session circuit breaking to directory-aware selection.
 // Reconnects get fresh circuits; late results cannot close a newer circuit epoch.
-// State is pruned to current connected Pool sessions on every Acquire.
+// Readiness changes preserve circuits; removal and reconnect discard stale state.
 type Balancer struct {
 	pool     *Pool
 	options  BalancerOptions
 	mu       sync.Mutex
 	circuits map[*socket.Session]*circuit
-	next     uint64
+	cursor   routeCursor
+	catalog  *routes
 }
 
 func NewBalancer(pool *Pool, options BalancerOptions) (*Balancer, error) {
@@ -66,57 +67,55 @@ func (b *Balancer) Acquire(name, affinity string) (*Selection, error) {
 		descriptor Descriptor
 		score      uint64
 	}
-	var all []candidate
-	live := make(map[*socket.Session]bool)
-	for _, peer := range b.pool.snapshot() {
-		provider, ok := peer.component.(SessionProvider)
-		if !peer.started || !ok {
-			continue
-		}
-		s, ok := provider.Session()
-		if !ok || s == nil || s.Context().Err() != nil {
-			continue
-		}
-		live[s] = true
-		if (name != "" && peer.descriptor.Name != name) || peer.descriptor.Metadata[DrainingMetadata] == "true" || s.Status().Draining {
-			continue
-		}
-		h := fnv.New64a()
-		_, _ = h.Write([]byte(affinity))
-		_, _ = h.Write([]byte{0})
-		_, _ = h.Write([]byte(peer.descriptor.ID))
-		all = append(all, candidate{s, peer.descriptor, h.Sum64()})
-	}
-	sort.Slice(all, func(i, j int) bool {
-		if affinity != "" && all[i].score != all[j].score {
-			return all[i].score > all[j].score
-		}
-		return all[i].descriptor.ID < all[j].descriptor.ID
-	})
+	r := b.pool.routes()
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	for session := range b.circuits {
-		if !live[session] {
-			delete(b.circuits, session)
+	if b.catalog != r {
+		b.prune(r)
+		b.catalog = r
+	}
+	start := b.cursor.start(r, name)
+	peers := r.groups[name]
+	var chosen candidate
+	var generation uint64
+	chosenIndex := 0
+	now := time.Now()
+	for offset := range len(peers) {
+		index := (start + offset) % len(peers)
+		if affinity != "" {
+			index = offset
+		}
+		peer := peers[index]
+		s := readySession(peer)
+		if s == nil {
+			continue
+		}
+		c := b.circuits[s]
+		if c != nil && (c.probe || now.Before(c.until)) {
+			continue
+		}
+		var score uint64
+		if affinity != "" {
+			score = routeScore(affinity, peer.descriptor.ID)
+		}
+		if chosen.session == nil || score > chosen.score {
+			chosen = candidate{s, peer.descriptor, score}
+			generation = peer.generation
+			chosenIndex = index
+		}
+		if affinity == "" {
+			break
 		}
 	}
-	if len(all) == 0 {
-		return nil, ErrNoPeer
-	}
-	start := 0
-	if affinity == "" {
-		start = int(b.next % uint64(len(all)))
-		b.next++
-	}
-	for offset := range len(all) {
-		chosen := all[(start+offset)%len(all)]
+	if chosen.session != nil {
+		if affinity == "" {
+			b.cursor.next[name] = chosenIndex + 1
+		}
 		c := b.circuits[chosen.session]
 		if c == nil {
-			c = &circuit{}
+			b.prune(r)
+			c = &circuit{id: chosen.descriptor.ID, generation: generation}
 			b.circuits[chosen.session] = c
-		}
-		if c.probe || time.Now().Before(c.until) {
-			continue
 		}
 		if !c.until.IsZero() {
 			c.probe = true
@@ -159,6 +158,23 @@ func (b *Balancer) Acquire(name, affinity string) (*Selection, error) {
 		return selection, nil
 	}
 	return nil, ErrNoPeer
+}
+
+func (b *Balancer) prune(r *routes) {
+	for s, c := range b.circuits {
+		generation, exists := r.generations[c.id]
+		if !exists || generation != c.generation || s.Context().Err() != nil {
+			delete(b.circuits, s)
+			continue
+		}
+		if provider, ok := r.byID[c.id].component.(SessionProvider); ok {
+			// A temporarily unready provider may return nil. Only a different,
+			// concrete session proves replacement while the old session is alive.
+			if current, _ := provider.Session(); current != nil && current != s {
+				delete(b.circuits, s)
+			}
+		}
+	}
 }
 
 // A faulty classifier must not strand a reserved half-open probe.
