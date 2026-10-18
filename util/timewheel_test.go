@@ -20,7 +20,13 @@ func TestWheelUpstreamKeyValidationAndEmptyAdvance(t *testing.T) {
 	// Orbit's compatibility type is usable by callers expecting the upstream type.
 	var upstream *timewheel.TimeWheel[any] = w
 	fn := func(time.Time) {}
-	for _, key := range []any{[]int{1}, map[string]int{"a": 1}, math.NaN()} {
+	for _, key := range []any{
+		[]int{1}, map[string]int{"a": 1}, math.NaN(),
+		struct{ Value any }{Value: []int{1}},
+		[1]any{map[string]int{"a": 1}},
+		struct{ Value float64 }{Value: math.NaN()},
+		[1]any{math.NaN()},
+	} {
 		if err := upstream.Schedule(key, start, 0, fn); !errors.Is(err, ErrInvalidKey) {
 			t.Fatalf("invalid key %T: %v", key, err)
 		}

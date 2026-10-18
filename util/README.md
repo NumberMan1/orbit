@@ -2,7 +2,7 @@
 
 提供不依赖业务模型的定时、集合、文本匹配和完整写入工具。WheelOptions.Logger 接收 `NumberMan1/log` 的 Logger，仅借用，见 [日志接入](../logging/README.md)。
 
-时间轮通过发布依赖 `github.com/NumberMan1/numbox v0.3.0` 的 `pkg/timewheel` 提供。
+时间轮通过发布依赖 `github.com/NumberMan1/numbox v0.4.1` 的 `pkg/timewheel` 提供。
 `TimeWheel[K]` 是上游类型别名，`NewTimeWheel` 仅适配日志；本包不维护调度算法。
 错误变量与上游保持同一哨兵，使用 `errors.Is` 判断，不依赖错误文本前缀。
 

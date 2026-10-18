@@ -20,7 +20,7 @@ go get github.com/NumberMan1/orbit@latest
 
 生产项目应固定经过验证的 tag 或提交版本。API 文档见 [pkg.go.dev](https://pkg.go.dev/github.com/NumberMan1/orbit)，
 发布记录见 [Releases](https://github.com/NumberMan1/orbit/releases)。公开前文档与徽章可能尚不可用。
-时间轮依赖 `github.com/NumberMan1/numbox v0.3.0`，日志依赖 `github.com/NumberMan1/log v0.3.1`，均通过 Go module 引入。
+时间轮依赖 `github.com/NumberMan1/numbox v0.4.1`，日志依赖 `github.com/NumberMan1/log v0.3.1`，均通过 Go module 引入。
 
 ## 快速运行
 

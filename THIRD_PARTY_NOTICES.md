@@ -20,7 +20,7 @@
 | `gorm.io/driver/mysql`、`gorm.io/gorm` | 可选 ORM 接入 |
 
 间接依赖也保留各自的版权与许可。依赖某个模块不表示使用了其中所有包；
-Orbit 只导入 numbox 的 `pkg/timewheel`，不会因此编译其 CGo 工具。
+Orbit 只导入 numbox 的 `pkg/timewheel`，不引入其其他工具包。
 发布包含依赖源码的 vendor、压缩包或其他再分发物时，应保留对应版本的 LICENSE、NOTICE 等文件。
 
 ## 历史迁移来源

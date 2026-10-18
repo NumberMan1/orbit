@@ -2,7 +2,7 @@
 
 Queue 只提供串行执行上下文；After/Every 只负责单项等待或周期执行。按 key 管理大量独立任务、批量推进、取消与重设使用 `util.TimeWheel[K]`，三种工具按需求共存。
 
-当前时间轮来自发布依赖 `github.com/NumberMan1/numbox v0.3.0`（导入路径为
+当前时间轮来自发布依赖 `github.com/NumberMan1/numbox v0.4.1`（导入路径为
 `github.com/NumberMan1/numbox/pkg/timewheel`）。Orbit 的 `util.TimeWheel[K]` 是类型别名，
 `util.NewTimeWheel` 保留原有 `WheelOptions.Logger`，将上游 slog 诊断适配到应用的 NumberMan1/log Logger。
 没有本地 replace 或调度算法副本；原有调用方式及日志 core 所有权不变。

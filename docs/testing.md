@@ -125,3 +125,16 @@ CI 已更新为 Go 1.27.2 默认配置，本机结果不等同于远程 CI 结�
 - 协议 fuzz 再次运行 10 秒，通过 643,885 次执行，无失败输入；执行量不作为性能比较依据。
 
 本次补充验证使用的服务版本如上，不替代 CI 中固定版本或多节点、持续负载、生产部署验证。
+
+## numbox v0.4.1 升级验证（2026-10-18）
+
+从 GitHub 远端核实最新 tag v0.4.1，对应提交 `f401ff44859935eb9b82ea98601ad68eea0427c4`。Orbit 从 v0.3.0 升级并同步 go.sum，无其他依赖版本变化或本地 replace。
+
+- Windows amd64、Go 1.27.2、`CGO_ENABLED=1` 下，`go test -race -count=1 -timeout=90s ./...` 全量通过。
+- 对实际依赖的 `github.com/NumberMan1/numbox/pkg/timewheel` 执行 race 测试，通过；不将其描述为 numbox 全库验证。
+- Orbit 新增回归覆盖嵌套接口持有切片/映射，以及结构体/数组包含 NaN 的非法 key，确认 Schedule/Reset/Cancel 保持错误哨兵和拒绝语义；既有 nil key、空轮推进、时间边界和日志适配测试通过。
+- 协议 fuzz 运行 10 秒，通过 2,567,764 次执行，无失败输入；执行量不作为性能比较依据。
+- `go run ./examples/timers` 实际触发三次结构化 pulse 日志并正常退出。
+- 格式、`go vet ./...`、`go build ./...`、生成器 `-check` 和 `go mod verify` 通过，`go mod tidy -diff` 无差异，`git diff --check` 通过。
+
+本轮只升级时间轮依赖，未改动发现或存储实现，未重跑真实基础设施集成测试；上一轮结果与版本范围保留在上文。

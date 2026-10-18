@@ -17,6 +17,7 @@
 
 ### 依赖与时间轮
 
+- numbox 发布依赖由 v0.3.0 升至 v0.4.1；时间轮 key 校验改用无反射比较，公开接口与日志适配保持兼容。补充嵌套接口及 NaN key 的拒绝回归。
 - 时间轮改用 `github.com/NumberMan1/numbox v0.3.0` 的 `pkg/timewheel`，移除 Orbit 内的调度算法。
 - 保留 `util.TimeWheel[K]` 类型别名、构造入口与 `WheelOptions.Logger`，将上游 slog 诊断转交应用的 NumberMan1/log Logger；组件仍不拥有日志 core。
 - 错误变量复用上游哨兵，新增 `util.ErrInvalidKey`；错误文本前缀由 `util:` 改为 `timewheel:`，调用方应使用 `errors.Is`。
