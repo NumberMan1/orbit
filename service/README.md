@@ -10,6 +10,9 @@ Queue.Status 提供队列压力、执行、拒绝与 panic 计数。详细依赖
 - Queue 的 Post 不阻塞，满队列返回 ErrFull；回调与周期 update 在同一 goroutine 串行执行，panic 被记录并隔离。
 - Queue 需显式 Stop，Start 的 context 只用于启动检查。Stop 拒绝新任务并排空已接收任务；回调必须及时返回，不能同步等待自身 Stop。
 - Queue 提供执行环境；大量定时任务使用 [util.TimeWheel](../util/README.md)，由 update 推进。
+- `NewShards(count, capacityPerShard, logger)` 将实体字符串 key 固定映射到多个 Queue：同一 key 串行，同一分片内按成功 Post 的加锁顺序执行，不同分片可并行。不同 key 可能碰撞到同一队列。
+- Shards.Post 非阻塞；总排队上限为分片数 × 每分片容量，外加每分片一个正在执行的任务。`For(key)` 可传给 socket.Queued。Stop/Drain 先统一拒绝新任务，再排空；不在回调里同步等待自身停止。
+- Shards 与 Queue 一样需要显式 Stop；不提供实体迁移、远程 Actor 或动态扩缩分片。将它放在网络组件之前加入 App，以便排空期间仍能执行已接受请求。
 - `Nodes[T]` 是并发安全的成员索引，拒绝重复 ID；仅复制成员表，不负责成员的启动、关闭或内部状态同步。
 
 参见 [生命周期约定](../docs/architecture.md) 与 [队列和时间轮示例](../examples/timers/README.md)。

@@ -13,6 +13,7 @@ import (
 
 	serverlog "github.com/NumberMan1/log"
 	"github.com/NumberMan1/log/field"
+	"github.com/NumberMan1/orbit/observe"
 	"github.com/NumberMan1/orbit/rpc"
 )
 
@@ -31,6 +32,8 @@ type Transport interface {
 }
 
 type Options struct {
+	// Observer is borrowed; it must be concurrency-safe and nonblocking.
+	Observer observe.Observer
 	// Admission is an optional shared listener quota, applied before session allocation.
 	Admission *Admission
 	// InboundRate optionally limits each session before decoding or queueing.
@@ -359,6 +362,19 @@ func (s *Session) Run(handler Handler) error {
 
 func (s *Session) handle(handler Handler, ctx context.Context, f rpc.Frame) (err error) {
 	start := time.Now()
+	if o := s.options.Observer; o != nil {
+		defer func() {
+			p := recover()
+			outcome := err
+			if p != nil {
+				outcome = errors.New("socket: handler panic")
+			}
+			observe.Emit(o, observe.Event{Kind: observe.Handler, Duration: time.Since(start), MessageID: f.ID, TraceID: observe.TraceID(ctx), Err: outcome})
+			if p != nil {
+				panic(p)
+			}
+		}()
+	}
 	if m := s.options.Metrics; m != nil {
 		defer func() {
 			m.handlerNanos.Add(uint64(time.Since(start)))

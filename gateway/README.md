@@ -1,5 +1,8 @@
 # gateway
 
+`ForwardWithOptions` 可设置 OnError，把路由/过载/后端错误映射成应用定义的安全回包；返回 nil 保持会话可用，回包失败应返回错误。旧 Forward 保持遇错关闭语义。
+CallerFunc 便于包装调用结果，保证 discovery.Selection.Complete(err) 在成功、失败路径都执行。不要把内部错误原文发给客户端；业务错误格式、哪些操作可重试仍由应用决定。
+
 `Forward(maxConcurrent, route)` 创建有界转发 Handler：Route 选择 Caller 和响应 ID，
 Caller 执行后端请求，再把响应序号恢复为原客户端序号。
 

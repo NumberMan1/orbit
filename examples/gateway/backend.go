@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/NumberMan1/orbit/discovery"
+	"github.com/NumberMan1/orbit/observe"
 	"github.com/NumberMan1/orbit/request"
 	"github.com/NumberMan1/orbit/rpc"
 	"github.com/NumberMan1/orbit/socket"
@@ -17,25 +19,46 @@ type backendPeer struct {
 	mu        sync.Mutex
 	session   *socket.Session
 	client    *request.Client
+	heartbeat *request.Heartbeat
+	heartDone chan struct{}
 }
 
-func newBackendPeer(address string, metrics *socket.Metrics) (*backendPeer, error) {
+func newBackendPeer(address string, metrics *socket.Metrics, timings observe.Observer) (*backendPeer, error) {
 	p := &backendPeer{}
 	options := socket.Options{Metrics: metrics, OnOpen: func(ctx context.Context, s *socket.Session) error {
-		client, err := request.New(s, request.Options{ResponseIDs: []uint16{2}, MaxPending: 64})
+		client, err := request.New(s, request.Options{ResponseIDs: []uint16{2, 4}, MaxPending: 65, Metadata: true, RawRequestIDs: []uint16{3}, CancelID: 9, Observer: timings})
 		if err != nil {
 			return err
 		}
+		heartbeat, err := request.NewHeartbeat(client, request.HeartbeatOptions{PingID: 3, PongID: 4, Interval: time.Second, Timeout: time.Second, MissLimit: 3, CloseOnFailure: true})
+		if err != nil {
+			client.Close()
+			return err
+		}
+		done := make(chan struct{})
 		p.mu.Lock()
 		p.session, p.client = s, client
+		p.heartbeat, p.heartDone = heartbeat, done
 		p.mu.Unlock()
+		go func() {
+			defer close(done)
+			if err := heartbeat.Run(ctx); err != nil && ctx.Err() == nil {
+				s.Close()
+			}
+		}()
 		return nil
 	}, OnClose: func(ctx context.Context, s *socket.Session, err error) {
 		p.mu.Lock()
-		defer p.mu.Unlock()
+		var done chan struct{}
 		if p.session == s {
 			p.client.Close()
 			p.session, p.client = nil, nil
+			done = p.heartDone
+			p.heartbeat, p.heartDone = nil, nil
+		}
+		p.mu.Unlock()
+		if done != nil {
+			<-done
 		}
 	}}
 	connector, err := tcp.NewConnector(address, options, nil, func(ctx context.Context, s *socket.Session, f rpc.Frame) error {
@@ -59,7 +82,10 @@ func (p *backendPeer) Session() (*socket.Session, bool) {
 		return nil, false
 	}
 	_, ok = p.clientFor(s)
-	return s, ok
+	p.mu.Lock()
+	heartbeat := p.heartbeat
+	p.mu.Unlock()
+	return s, ok && heartbeat != nil && heartbeat.Status().Healthy
 }
 func (p *backendPeer) clientFor(s *socket.Session) (*request.Client, bool) {
 	p.mu.Lock()

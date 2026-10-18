@@ -29,6 +29,7 @@ go test -race -count=1 -timeout=90s ./...
 go build ./...
 go run ./cmd/orbitgen -in examples/gateway/protocol/messages.json -out examples/gateway/protocol/bindings_gen.go -check
 go test ./rpc -run='^$' -fuzz=FuzzRead -fuzztime=10s
+go test ./request -run='^$' -fuzz=FuzzMetadata -fuzztime=10s
 ```
 
 `gofmt -l .` 应没有输出。竞态检测需要平台支持并安装可用的 C 编译器。

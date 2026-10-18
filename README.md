@@ -55,15 +55,16 @@ JSON 直接使用标准库 `encoding/json/v2`，Go 1.27.2 无需手动启用实�
 | [socket/tcp](socket/tcp/README.md) | TCP/TLS、受管理连接器、退避重连、网络选项 |
 | [socket/websocket](socket/websocket/README.md) | WebSocket/WSS、受管理连接器、重连、帧与同源检查 |
 | [socket/http](socket/http/README.md) | HTTP/HTTPS、私有路由、限量 JSON/表单、状态码响应 |
-| [service](service/README.md) | 有序启动、失败回滚、运行故障监督、逆序关闭、串行事件队列 |
+| [service](service/README.md) | 有序启动、失败回滚、运行故障监督、逆序关闭、串行队列与按实体分片执行 |
 | [discovery](discovery/README.md) | etcd 注册/恢复/状态更新、原子 Store、动态节点 Pool、就绪状态 |
 | [storage/mysql](storage/mysql/README.md) | 有界 SQL 连接池、可选 GORM，调用方持有并关闭连接 |
 | [storage/redis](storage/redis/README.md) | 单机/集群连接、上下文及 TLS、启动检查 |
-| [config](config/README.md) | 泛型 YAML 加载、大小限制、严格字段与应用校验 |
+| [config](config/README.md) | 泛型 YAML 加载、严格校验、带字段策略和版本的原子热更新 |
 | [util](util/README.md) | 时间轮、可暂停计时器、位图、Unicode 匹配、完整写入 |
 | [logging](logging/README.md) | NumberMan1/log v0.3.1 接入指南：结构化字段、异步文件输出与生命周期 |
 | [health](health/README.md) | 聚合存活/就绪检查，排空期间取消就绪 |
-| [request](request/README.md) | 有界请求响应匹配、超时取消、断连清理 |
+| [request](request/README.md) | 有界请求响应、远端取消/截止时间、心跳应答与失活检测 |
+| [observe](observe/README.md) | 可选观测接口、延迟直方图、Prometheus 导出与关联标识 |
 | [gateway](gateway/README.md) | 有界后端转发与客户端序号还原 |
 | [orbitgen](cmd/orbitgen/README.md) | 消息注册与 Handler 绑定代码生成、一致性检查 |
 
@@ -75,7 +76,7 @@ JSON 直接使用标准库 `encoding/json/v2`，Go 1.27.2 无需手动启用实�
 
 ```sh
 make verify       # 格式、vet、race 测试、构建；检查精确工具链版本
-make fuzz         # 报文解码模糊测试
+make fuzz         # 报文与可选请求元数据解码模糊测试
 make integration  # 独立 etcd 实例，以及可配置的 MySQL/Redis 集成测试
 ```
 
@@ -86,6 +87,7 @@ make integration  # 独立 etcd 实例，以及可配置的 MySQL/Redis 集成�
 更多接入：[时间轮与定时器](docs/timers.md) · [补充框架能力](docs/framework-extensions.md) · [rocommon 逐文件核对](docs/migration-audit.md)。可运行 `go run ./examples/timers` 查看时间轮与串行 Queue 的组合。
 
 生产接入：[连接配额、限流、优雅停服、健康与指标](docs/production.md)。
+进阶接入：[心跳、熔断、取消传播、观测、分片执行与热更新](docs/reliability.md)。
 运行 `go run ./examples/gateway -listen 127.0.0.1:0 -admin 127.0.0.1:0 -self-test`
 验证两后端网关、请求响应及排空退出。分阶段停服使用可选 `App.RunGraceful`，原有 Run/Close 行为保持兼容。
 

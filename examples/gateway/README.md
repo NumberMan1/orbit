@@ -13,6 +13,7 @@ go run ./examples/gateway
 - `/livez`：进程组件存活。
 - `/readyz`：目录就绪且两个后端已建立调用连接。
 - `/metrics`：JSON 计数快照；本例所有配置了 Metrics 的进程内会话共用一个 collector。
+- `/metrics/prometheus`：固定基数的调用、执行与队列等待延迟直方图。
 
 按 Ctrl+C 或发送 SIGTERM 使用 RunGraceful 退出。应用不包含认证，只供本机演示；不要直接将管理接口暴露到公网。
 
@@ -26,5 +27,7 @@ go run ./examples/gateway -listen 127.0.0.1:0 -admin 127.0.0.1:0 -self-test
 调用链为：客户端 Call → 网关 Forward → Picker → 后端 Call → EchoReply → 原客户端序号。
 
 静态目录只在本例中实现，不依赖真实 etcd；实际部署可换成 `Registry.NewStore`。
-每个后端 Connector 在 OnOpen 创建一个 request.Client，在 OnClose 关闭；新连接不会复用旧等待表。
+每个后端 Connector 在 OnOpen 创建一个 request.Client 和 Heartbeat，在 OnClose 关闭并等待心跳退出；新连接不会复用旧等待表。只有成功收到 Pong 的连接才参与应用就绪和路由。
+本例显式使用请求 ID 1、响应 ID 2、Ping/Pong ID 3/4、取消 ID 9；双方启用 Metadata，传播截止时间和关联 ID。仅示例协议发生这一变化，框架默认原始载荷不变。
+Balancer 使用三次连续失败阈值和一秒冷却，半开时只放行一次探测。错误映射只回复固定 unavailable，不泄露内部错误，也不自动重试。
 组件顺序保证网关排空时后端与连接池仍可用。后端服务地址、鉴权、故障切换、业务错误与黏性 key 按应用需要配置。

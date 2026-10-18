@@ -18,6 +18,10 @@ type SessionProvider interface {
 	Session() (*socket.Session, bool)
 }
 
+// DrainingMetadata is an opt-in directory convention. Publish "true" before
+// draining; selectors exclude that descriptor without stopping existing calls.
+const DrainingMetadata = "orbit.draining"
+
 // Picker selects connected Pool members. Empty affinity uses round robin;
 // nonempty affinity uses rendezvous hashing over stable descriptor IDs.
 // Do not copy after use. Picking never retries or replays a request.
@@ -47,7 +51,7 @@ func (p *Picker) Pick(name, affinity string) (*socket.Session, Descriptor, error
 	}
 	var candidates []candidate
 	for _, peer := range p.pool.snapshot() {
-		if !peer.started || (name != "" && name != peer.descriptor.Name) {
+		if !peer.started || peer.descriptor.Metadata[DrainingMetadata] == "true" || (name != "" && name != peer.descriptor.Name) {
 			continue
 		}
 		provider, ok := peer.component.(SessionProvider)
@@ -55,7 +59,7 @@ func (p *Picker) Pick(name, affinity string) (*socket.Session, Descriptor, error
 			continue
 		}
 		s, ok := provider.Session()
-		if ok && s != nil && s.Context().Err() == nil {
+		if ok && s != nil && s.Context().Err() == nil && !s.Status().Draining {
 			candidates = append(candidates, candidate{s, peer.descriptor})
 		}
 	}

@@ -19,6 +19,7 @@ import (
 	"github.com/NumberMan1/orbit/examples/gateway/protocol"
 	"github.com/NumberMan1/orbit/gateway"
 	"github.com/NumberMan1/orbit/health"
+	"github.com/NumberMan1/orbit/observe"
 	"github.com/NumberMan1/orbit/request"
 	"github.com/NumberMan1/orbit/rpc"
 	"github.com/NumberMan1/orbit/service"
@@ -46,11 +47,19 @@ func run(parent context.Context, listen, admin string, selfTest bool) error {
 		return err
 	}
 	metrics := &socket.Metrics{}
+	timings := &observe.Metrics{}
 	admission, err := socket.NewAdmission(128, 64)
 	if err != nil {
 		return err
 	}
-	options := socket.Options{Admission: admission, Metrics: metrics, ReadTimeout: time.Minute, InboundRate: socket.RateLimit{PerSecond: 100, Burst: 200}}
+	options := socket.Options{Admission: admission, Metrics: metrics, Observer: timings, ReadTimeout: time.Minute, InboundRate: socket.RateLimit{PerSecond: 100, Burst: 200}}
+	onError := func(_ context.Context, s *socket.Session, f rpc.Frame, _ error) error {
+		reply, err := registry.Encode(&protocol.EchoReply{Error: "unavailable"}, f.Sequence)
+		if err != nil {
+			return err
+		}
+		return s.Send(reply)
+	}
 	var backends []*tcp.Server
 	for _, name := range []string{"backend-a", "backend-b"} {
 		router := &socket.Router{}
@@ -59,7 +68,15 @@ func run(parent context.Context, listen, admin string, selfTest bool) error {
 		}}); err != nil {
 			return err
 		}
-		s, err := tcp.NewServer("127.0.0.1:0", options, router.Handle, nil)
+		calls, err := request.NewServer(request.ServerOptions{RequestIDs: []uint16{1}, CancelID: 9, Metadata: true, MaxConcurrent: 64, OnError: onError, Observer: timings}, router.Handle)
+		if err != nil {
+			return err
+		}
+		handler, err := request.RespondHeartbeat(3, 4, calls.Handler(nil))
+		if err != nil {
+			return err
+		}
+		s, err := tcp.NewServer("127.0.0.1:0", options, handler, nil)
 		if err != nil {
 			return err
 		}
@@ -70,40 +87,52 @@ func run(parent context.Context, listen, admin string, selfTest bool) error {
 	if err != nil {
 		return err
 	}
-	pool, err := discovery.NewPool(store, func(d discovery.Descriptor) (orbit.Component, error) { return newBackendPeer(d.Address, metrics) }, discovery.PoolOptions{Interval: 10 * time.Millisecond})
+	pool, err := discovery.NewPool(store, func(d discovery.Descriptor) (orbit.Component, error) {
+		return newBackendPeer(d.Address, metrics, timings)
+	}, discovery.PoolOptions{Interval: 10 * time.Millisecond})
 	if err != nil {
 		return err
 	}
-	picker, err := discovery.NewPicker(pool)
+	balancer, err := discovery.NewBalancer(pool, discovery.BalancerOptions{FailureThreshold: 3, Cooldown: time.Second})
 	if err != nil {
 		return err
 	}
-	forward, err := gateway.Forward(64, func(ctx context.Context, front *socket.Session, f rpc.Frame) (gateway.Caller, uint16, error) {
+	forward, err := gateway.ForwardWithOptions(gateway.ForwardOptions{MaxConcurrent: 64, OnError: onError}, func(ctx context.Context, front *socket.Session, f rpc.Frame) (gateway.Caller, uint16, error) {
 		if f.ID != 1 {
 			return nil, 0, errors.New("example: unsupported request")
 		}
-		s, d, err := picker.Pick("echo", "")
+		selected, err := balancer.Acquire("echo", "")
 		if err != nil {
 			return nil, 0, err
 		}
-		component, ok := pool.Get(d.ID)
+		component, ok := pool.Get(selected.Descriptor.ID)
 		if !ok {
+			selected.Complete(discovery.ErrNoPeer)
 			return nil, 0, discovery.ErrNoPeer
 		}
 		peer, ok := component.(*backendPeer)
 		if !ok {
+			selected.Complete(discovery.ErrNoPeer)
 			return nil, 0, discovery.ErrNoPeer
 		}
-		client, ok := peer.clientFor(s)
+		client, ok := peer.clientFor(selected.Session)
 		if !ok {
+			selected.Complete(discovery.ErrNoPeer)
 			return nil, 0, discovery.ErrNoPeer
 		}
-		return client, 2, nil
+		return gateway.CallerFunc(func(ctx context.Context, f rpc.Frame, id uint16) (reply rpc.Frame, err error) {
+			defer func() { selected.Complete(err) }()
+			return client.Call(ctx, f, id)
+		}), 2, nil
 	})
 	if err != nil {
 		return err
 	}
-	front, err := tcp.NewServer(listen, options, forward, nil)
+	frontCalls, err := request.NewServer(request.ServerOptions{RequestIDs: []uint16{1}, CancelID: 9, Metadata: true, MaxConcurrent: 64, OnError: onError, Observer: timings}, forward)
+	if err != nil {
+		return err
+	}
+	front, err := tcp.NewServer(listen, options, frontCalls.Handler(nil), nil)
 	if err != nil {
 		return err
 	}
@@ -140,6 +169,7 @@ func run(parent context.Context, listen, admin string, selfTest bool) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /livez", checks.Liveness)
 	mux.HandleFunc("GET /readyz", checks.Readiness)
+	mux.Handle("GET /metrics/prometheus", timings)
 	mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.MarshalWrite(w, struct {
@@ -185,7 +215,7 @@ func exercise(ctx context.Context, address, admin string, registry *codec.Regist
 	if err != nil {
 		return err
 	}
-	c, err := request.New(s, request.Options{ResponseIDs: []uint16{2}})
+	c, err := request.New(s, request.Options{ResponseIDs: []uint16{2}, Metadata: true, CancelID: 9})
 	if err != nil {
 		s.Close()
 		return err
@@ -209,7 +239,7 @@ func exercise(ctx context.Context, address, admin string, registry *codec.Regist
 			return err
 		}
 		message := decoded.(*protocol.EchoReply)
-		if message.Text != text {
+		if message.Text != text || message.Error != "" {
 			return errors.New("example: response payload mismatch")
 		}
 		seen[message.Backend] = true
@@ -220,7 +250,7 @@ func exercise(ctx context.Context, address, admin string, registry *codec.Regist
 	}
 	client := &http.Client{Timeout: time.Second}
 	defer client.CloseIdleConnections()
-	for _, path := range []string{"/livez", "/readyz", "/metrics"} {
+	for _, path := range []string{"/livez", "/readyz", "/metrics", "/metrics/prometheus"} {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+admin+path, nil)
 		if err != nil {
 			return err

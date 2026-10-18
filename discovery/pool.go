@@ -181,7 +181,12 @@ func (p *Pool) reconcile(ctx context.Context) error {
 			default:
 			}
 		}
-		if alive && ok && d.Name == old.descriptor.Name && d.Address == old.descriptor.Address && maps.Equal(d.Metadata, old.descriptor.Metadata) {
+		if alive && ok && d.Name == old.descriptor.Name && d.Address == old.descriptor.Address && samePeerMetadata(d.Metadata, old.descriptor.Metadata) {
+			// A drain announcement changes routing only; preserve in-flight calls.
+			p.mu.Lock()
+			old.descriptor = copyDescriptor(d)
+			p.peers[id] = old
+			p.mu.Unlock()
 			continue
 		}
 		stopCtx, cancel := context.WithTimeout(ctx, p.options.StopTimeout)
@@ -233,4 +238,11 @@ func (p *Pool) reconcile(ctx context.Context) error {
 		}
 	}
 	return result
+}
+
+func samePeerMetadata(a, b map[string]string) bool {
+	x, y := maps.Clone(a), maps.Clone(b)
+	delete(x, DrainingMetadata)
+	delete(y, DrainingMetadata)
+	return maps.Equal(x, y)
 }

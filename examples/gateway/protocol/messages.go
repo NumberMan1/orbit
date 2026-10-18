@@ -10,6 +10,7 @@ type Echo struct {
 
 // EchoReply is the demonstration response (message ID 2).
 type EchoReply struct {
+	Error   string `json:"error,omitempty"`
 	Text    string `json:"text"`
 	Backend string `json:"backend"`
 }

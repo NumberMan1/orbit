@@ -15,6 +15,7 @@ race: check-version
 	$(GO) test -race -timeout=90s ./...
 fuzz: check-version
 	$(GO) test ./rpc -run='^$$' -fuzz=FuzzRead -fuzztime=10s
+	$(GO) test ./request -run='^$$' -fuzz=FuzzMetadata -fuzztime=10s
 build: check-version
 	$(GO) build ./...
 generated: check-version

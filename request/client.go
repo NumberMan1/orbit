@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/NumberMan1/orbit/observe"
 	"github.com/NumberMan1/orbit/rpc"
 	"github.com/NumberMan1/orbit/socket"
 )
@@ -28,6 +29,16 @@ var (
 // Options bounds memory and waiting. ResponseIDs must be nonempty and distinct
 // from inbound request/push IDs; these IDs are consumed even for late responses.
 type Options struct {
+	// Metadata wraps request bodies with versioned deadline/correlation metadata.
+	// Both endpoints must enable it explicitly. Response bodies are unchanged.
+	Metadata bool
+	// RawRequestIDs exempts negotiated control requests (for example heartbeat)
+	// from metadata wrapping while sharing this client's sequence space.
+	RawRequestIDs []uint16
+	// CancelID is a dedicated, negotiated control ID; zero disables remote cancel.
+	// Cancellation is best effort and never retried if the send queue is full.
+	CancelID    uint16
+	Observer    observe.Observer
 	MaxPending  int           // zero defaults to 256
 	Timeout     time.Duration // zero defaults to 5s; applied even without a caller deadline
 	ResponseIDs []uint16
@@ -45,15 +56,16 @@ type pending struct {
 // that session with Handler; create a NEW
 // Client on every reconnect. No requests are replayed or retried automatically.
 type Client struct {
-	session                  *socket.Session
-	options                  Options
-	mu                       sync.Mutex
-	responses                map[uint16]bool
-	pending                  map[uint32]*pending
-	next                     uint64
-	closed                   error
-	stop                     func() bool
-	completed, expired, late uint64
+	session                                  *socket.Session
+	options                                  Options
+	mu                                       sync.Mutex
+	responses                                map[uint16]bool
+	raw                                      map[uint16]bool
+	pending                                  map[uint32]*pending
+	next                                     uint64
+	closed                                   error
+	stop                                     func() bool
+	completed, expired, late, cancelFailures uint64
 }
 
 // New validates configuration and arranges immediate cleanup on disconnection.
@@ -70,10 +82,17 @@ func New(session *socket.Session, options Options) (*Client, error) {
 	}
 	c := &Client{session: session, options: options, responses: make(map[uint16]bool), pending: make(map[uint32]*pending)}
 	for _, id := range options.ResponseIDs {
-		if id == 0 || c.responses[id] {
+		if id == 0 || c.responses[id] || id == options.CancelID {
 			return nil, errors.New("request: invalid/duplicate response ID")
 		}
 		c.responses[id] = true
+	}
+	c.raw = make(map[uint16]bool)
+	for _, id := range options.RawRequestIDs {
+		if id == 0 || id == options.CancelID || c.responses[id] || c.raw[id] {
+			return nil, errors.New("request: invalid raw request IDs")
+		}
+		c.raw[id] = true
 	}
 	c.stop = context.AfterFunc(session.Context(), func() { c.fail(errors.Join(ErrClosed, context.Cause(session.Context()))) })
 	return c, nil
@@ -84,23 +103,45 @@ type Status struct {
 	Pending                  int
 	Completed, Expired, Late uint64
 	Closed                   bool
+	CancelFailures           uint64
 }
 
 // Status returns a coherent snapshot; Expired counts caller cancellations/timeouts.
 func (c *Client) Status() Status {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return Status{len(c.pending), c.completed, c.expired, c.late, c.closed != nil}
+	return Status{len(c.pending), c.completed, c.expired, c.late, c.closed != nil, c.cancelFailures}
 }
 
 // Call assigns a session-unique sequence and waits for expectedResponseID. A nil
 // error means a matching frame arrived, not that application processing succeeded.
 // Never call it on the same session's synchronous read handler: that blocks replies.
-func (c *Client) Call(parent context.Context, frame rpc.Frame, expectedResponseID uint16) (rpc.Frame, error) {
+func (c *Client) Call(parent context.Context, frame rpc.Frame, expectedResponseID uint16) (response rpc.Frame, callErr error) {
 	ctx, cancel := context.WithTimeout(parent, c.options.Timeout)
 	defer cancel()
+	started := time.Now()
+	if c.options.Metadata && !c.raw[frame.ID] {
+		var err error
+		ctx, err = observe.EnsureTrace(ctx)
+		if err != nil {
+			return rpc.Frame{}, err
+		}
+	}
+	defer func() {
+		observe.Emit(c.options.Observer, observe.Event{Kind: observe.ClientCall, Duration: time.Since(started), MessageID: frame.ID, TraceID: observe.TraceID(ctx), Err: callErr})
+	}()
+	if frame.ID == 0 || frame.ID == c.options.CancelID || c.responses[frame.ID] {
+		return rpc.Frame{}, errors.New("request: request ID conflicts with control/response IDs")
+	}
 	if err := ctx.Err(); err != nil {
 		return rpc.Frame{}, err
+	}
+	if c.options.Metadata && !c.raw[frame.ID] {
+		var err error
+		frame, err = pack(ctx, frame)
+		if err != nil {
+			return rpc.Frame{}, err
+		}
 	}
 	c.mu.Lock()
 	if c.closed != nil {
@@ -142,6 +183,13 @@ func (c *Client) Call(parent context.Context, frame rpc.Frame, expectedResponseI
 		c.mu.Lock()
 		c.expired++
 		c.mu.Unlock()
+		if c.options.CancelID != 0 {
+			if err := c.session.Send(rpc.Frame{ID: c.options.CancelID, Sequence: frame.Sequence}); err != nil {
+				c.mu.Lock()
+				c.cancelFailures++
+				c.mu.Unlock()
+			}
+		}
 		return rpc.Frame{}, ctx.Err()
 	case <-c.session.Context().Done():
 		return rpc.Frame{}, errors.Join(ErrClosed, context.Cause(c.session.Context()))

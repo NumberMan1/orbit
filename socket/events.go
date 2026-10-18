@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/NumberMan1/orbit/codec"
+	"github.com/NumberMan1/orbit/observe"
 	"github.com/NumberMan1/orbit/rpc"
 )
 
@@ -63,7 +64,8 @@ func Queued(queue Poster, handler Handler) (Handler, error) {
 		return nil, errors.New("socket: queue and handler required")
 	}
 	return func(ctx context.Context, s *Session, f rpc.Frame) error {
-		ctx = context.WithValue(ctx, receiveTimeKey{}, time.Now())
+		queuedAt := time.Now()
+		ctx = context.WithValue(ctx, receiveTimeKey{}, queuedAt)
 		f.Payload = bytes.Clone(f.Payload)
 		if !s.retainWork(true) {
 			return ErrClosed
@@ -71,6 +73,7 @@ func Queued(queue Poster, handler Handler) (Handler, error) {
 		err := queue.Post(func() {
 			defer s.releaseWork()
 			defer s.recoverPanic()
+			observe.Emit(s.options.Observer, observe.Event{Kind: observe.QueueWait, Duration: time.Since(queuedAt), MessageID: f.ID, TraceID: observe.TraceID(ctx)})
 			if ctx.Err() != nil {
 				return
 			}
