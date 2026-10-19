@@ -9,7 +9,7 @@
 
 | 模块 | 用途 |
 | --- | --- |
-| `github.com/NumberMan1/numbox` | `pkg/timewheel` 主动推进时间轮 |
+| `github.com/NumberMan1/numbox` | `pkg/timewheel` 时间轮、`pkg/matcher` 版本回归 |
 | `github.com/NumberMan1/log` | 结构化日志与输出生命周期 |
 | `github.com/go-redis/redis/v8` | Redis 客户端 |
 | `github.com/go-sql-driver/mysql` | MySQL 驱动 |
@@ -20,7 +20,9 @@
 | `gorm.io/driver/mysql`、`gorm.io/gorm` | 可选 ORM 接入 |
 
 间接依赖也保留各自的版权与许可。依赖某个模块不表示使用了其中所有包；
-Orbit 只导入 numbox 的 `pkg/timewheel`，不引入其其他工具包。
+Orbit 直接使用 numbox 的 `pkg/timewheel`，并对 `pkg/matcher` 保留版本回归测试，
+不复制其算法；[上游 v0.4.2](https://github.com/NumberMan1/numbox/tree/v0.4.2) 采用 MIT 许可，
+版权与授权条款见该版本的 [LICENSE](https://github.com/NumberMan1/numbox/blob/v0.4.2/LICENSE)。
 发布包含依赖源码的 vendor、压缩包或其他再分发物时，应保留对应版本的 LICENSE、NOTICE 等文件。
 
 ## 历史迁移来源

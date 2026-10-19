@@ -1,4 +1,4 @@
-package util
+package logging
 
 import (
 	"errors"
@@ -20,12 +20,12 @@ func (p *wheelLogPrinter) Log(level serverlog.Level, _ string, data serverlog.M)
 }
 func (*wheelLogPrinter) Close() {}
 
-func TestWheelLogAdapterScopesAndLevels(t *testing.T) {
+func TestSlogAdapterScopesAndLevels(t *testing.T) {
 	raw := serverlog.NewLogger()
 	defer raw.Close()
 	printer := &wheelLogPrinter{}
 	raw.AddPrinter(serverlog.LevelSwitchLte(serverlog.TraceLevel), printer)
-	logger := slog.New(wheelLogHandler{logger: serverlog.NewServerLogger(raw)})
+	logger := NewSlogLogger(serverlog.NewServerLogger(raw))
 	original := errors.New("original")
 	scoped := logger.With("owner", "queue").WithGroup("wheel").With("id", 7)
 	scoped.Error("failure", "error", original, slog.Group("nested", "value", 3), slog.Attr{})

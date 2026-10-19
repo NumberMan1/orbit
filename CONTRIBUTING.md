@@ -42,7 +42,7 @@ go test ./request -run='^$' -fuzz=FuzzMetadata -fuzztime=10s
 - 保持框架通用，不引入私有业务模块、用户数据、内置凭据或业务协议生成物。
 - 使用 `gofmt`，为导出接口补充并发、nil、资源归属、错误及关闭行为的文档。
 - 组件只借用调用方日志；停止所有使用者后由应用关闭 core。
-- 时间轮算法由 `github.com/NumberMan1/numbox/pkg/timewheel` 维护，Orbit 只保留兼容入口与日志适配。
+- 时间轮算法由 `github.com/NumberMan1/numbox/pkg/timewheel` 维护，Orbit 直接导入上游包，仅在 `logging` 提供日志适配，不保留 util 转发入口。
 - 改动协议、回调、并发或生命周期时，补充调用方可见行为的回归测试，并同步更新示例与文档。
 - 依赖调整运行 `go mod tidy`，提交 `go.mod` 和 `go.sum`；使用发布版本，不提交本地路径 replace。
 - 面向用户的变更记入 [CHANGELOG.md](CHANGELOG.md)，破坏性变更说明迁移路径。

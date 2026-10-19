@@ -1,5 +1,7 @@
 # timers 示例
 
+直接导入 `github.com/NumberMan1/numbox/pkg/timewheel`，通过 `logging.NewSlogLogger` 接入借用的 NumberMan1/log Logger。
+
 展示 Queue 与时间轮的组合：Queue 提供串行执行环境，TimeWheel 管理按 key 索引的定时任务。
 
 在仓库根目录运行，无需外部服务：

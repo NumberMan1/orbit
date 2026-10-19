@@ -6,7 +6,7 @@
 
 - 模块为 `github.com/NumberMan1/orbit`，使用 Go 1.27.2 和标准库 `encoding/json/v2`。
 - 提供通用服务器组件，不导入私有业务模块，不加入业务协议、用户数据或内置密钥。
-- 时间轮通过 GitHub module 引入 numbox；`util` 仅保留兼容入口及 NumberMan1/log 适配，不复制上游算法。
+- 通用工具和时间轮直接使用 numbox 发布包；不保留 `util` 兼容入口，不复制上游算法。NumberMan1/log 到 slog 的适配统一放在 `logging`。
 - 依赖固定发布版本，更新后维护 go.mod/go.sum；不提交本地 replace 或 go.work。
 
 ## 并发与生命周期

@@ -12,7 +12,6 @@
 - Redis 默认禁用隐式命令重放，新增显式 Retries/ClusterRedirects；集群 MOVED/ASK 跟随需显式启用，并承担网络错误重试可能重复写的风险。
 - 配置拒绝 nil 解码结果；Live 普通数据快照直接深拷贝已校验值，带隐藏状态的类型保留 YAML 隔离。
 - HTTP 自定义默认 RoundTripper 返回错误而非 panic，增加借用传输的 NewClientWithTransport；orbitgen 避开局部参数与导入/类型重名，提前拒绝生成声明冲突。
-- util 的 Bitmap、Matcher、PollTimer、After/Every、WriteFull 收敛为 numbox v0.4.1 兼容入口，保留现有 API。
 
 ### 故障处理与运行扩展
 
@@ -36,10 +35,13 @@
 
 ### 依赖与时间轮
 
+- numbox 升级至 v0.4.2，采用上游 Matcher 失败链接扫描优化，保持 Unicode 区间、排序和替换语义。
+- **不兼容变更**：删除整个 util 包及其类型别名、构造函数、错误哨兵和转发入口，调用方直接导入 numbox 对应子包，迁移映射见 [迁移说明](docs/migration.md#直接使用-numbox-v0422026-10-19)。
+- 时间轮示例和组件日志测试直接使用 numbox；新增 `logging.NewSlogLogger` 统一适配 NumberMan1/log，组件仍不拥有日志 core。
+
 - numbox 发布依赖由 v0.3.0 升至 v0.4.1；时间轮 key 校验改用无反射比较，公开接口与日志适配保持兼容。补充嵌套接口及 NaN key 的拒绝回归。
 - 时间轮改用 `github.com/NumberMan1/numbox v0.3.0` 的 `pkg/timewheel`，移除 Orbit 内的调度算法。
-- 保留 `util.TimeWheel[K]` 类型别名、构造入口与 `WheelOptions.Logger`，将上游 slog 诊断转交应用的 NumberMan1/log Logger；组件仍不拥有日志 core。
-- 错误变量复用上游哨兵，新增 `util.ErrInvalidKey`；错误文本前缀由 `util:` 改为 `timewheel:`，调用方应使用 `errors.Is`。
+- 时间轮错误直接使用上游哨兵 `timewheel.ErrTimerExists`、`ErrClockBackwards`、`ErrInvalidKey`，调用方应使用 `errors.Is`。
 - 不可比较的接口 key 和包含 NaN 的 key 被拒绝；空轮 Advance 可直接追到目标时间，不消耗逐槽追赶预算。
 - `github.com/NumberMan1/log` 从 v0.3.0 升至 v0.3.1，并同步其必要间接依赖。
 

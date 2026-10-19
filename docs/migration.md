@@ -28,9 +28,9 @@
 | `socket/mysql` | `storage/mysql`、标准库 `database/sql` | 修复连接池上限、初始化失败泄漏，保留可选 GORM |
 | `service/yamlconfig.go` | `config` | 严格 YAML 与校验，去掉业务和第三方 SDK 配置 |
 | `util/loghelper.go` | `github.com/NumberMan1/log v0.3.1` | 结构化字段、可选异步时间轮转/上报；不内置业务日志索引 |
-| `util/ioutil.go` | `util.WriteFull`、`io`、`os` | 补完整写入；拒绝零进展，使用安全 byte/string 转换 |
-| `util/timer.go`、`timewheel.go` | `util.TimeWheel[K]`、`PollTimer`、`After/Every` | 时间轮改用 numbox 发布依赖，保留暂停/恢复；Queue 只是推进/执行上下文，不能单独替代时间轮 |
-| `util/bitmap.go`、`dfa_filter.go` | `util.Bitmap`、`Matcher` | 补通用算法；修复重复计数、数据别名、Unicode/重叠匹配；词库由调用方传入 |
+| `util/ioutil.go` | numbox `ioutil.WriteFull`、`io`、`os` | 补完整写入；拒绝零进展，使用安全 byte/string 转换 |
+| `util/timer.go`、`timewheel.go` | numbox `timewheel.TimeWheel[K]`、`numtime.PollTimer/After/Every` | 时间轮改用 numbox 发布依赖，保留暂停/恢复；Queue 只是推进/执行上下文，不能单独替代时间轮 |
+| `util/bitmap.go`、`dfa_filter.go` | numbox `bitmap.Bitmap`、`matcher.Matcher` | 补通用算法；修复重复计数、数据别名、Unicode/重叠匹配；词库由调用方传入 |
 | `baseserver/set` 等 rocommon 外业务工具 | 范围外 | 不作为 rocommon 框架源码整体迁入 |
 
 没有迁入：`roserver` / `roweb` 的业务服务器、`serverproto` 生成协议、游戏数据表、账号登录、玩家/角色、战斗、排行榜、公会、GM、支付与第三方 SDK、机器人、跨服业务路由、AOI、共享内存业务同步、业务 Elasticsearch 索引。虽然 `baseserver` 名为基础服务器，其实现直接依赖上述协议与模型，所以没有整体迁入。
@@ -79,10 +79,27 @@
 ## numbox 时间轮与日志依赖更新（2026-10-17）
 
 时间轮改用 GitHub 发布依赖 `github.com/NumberMan1/numbox v0.3.0`，对应提交
-`f87ec986a57535725c8618bbc180699a80615af1`。`util.TimeWheel[K]` 是上游类型别名，
-构造函数仅保留 NumberMan1/log 日志适配，现有调用无需更换 Logger 类型。
+`f87ec986a57535725c8618bbc180699a80615af1`。当时的 `util.TimeWheel[K]` 为上游类型别名，
+构造函数保留 NumberMan1/log 日志适配。该兼容包现已删除，当前迁移方式见下节。
 错误哨兵直接复用上游，文本前缀变为 `timewheel:`；新增非法 key 检查和空轮快速推进，详见 [时间轮说明](timers.md)。
 
 日志升级到 `github.com/NumberMan1/log v0.3.1`，对应提交
 `6674654a2833df929cefda48b32d7f28d6e37557`。保留应用拥有日志 core、组件仅借用的生命周期约定。
 两个依赖均固定发布 tag 与 go.sum 校验值，不通过本地路径替换。
+
+## 直接使用 numbox v0.4.2（2026-10-19）
+
+整个 `github.com/NumberMan1/orbit/util` 包已删除，包括类型别名、构造函数、错误变量及转发函数。
+这是不兼容变更；调用方须直接导入 numbox 子包，算法与优化统一由 numbox 维护。
+
+| 已删除的 util 入口 | 直接使用的包与入口 |
+| --- | --- |
+| Bitmap / NewBitmap | `github.com/NumberMan1/numbox/pkg/bitmap` 的同名入口 |
+| Matcher / Match / NewMatcher | `github.com/NumberMan1/numbox/pkg/matcher` 的同名入口 |
+| PollTimer / After / Every | `github.com/NumberMan1/numbox/pkg/time` 的同名入口（建议别名 `numtime`） |
+| WriteFull | `github.com/NumberMan1/numbox/utils/ioutil.WriteFull` |
+| TimeWheel / WheelOptions / NewTimeWheel / ErrTimerExists / ErrClockBackwards / ErrInvalidKey | `github.com/NumberMan1/numbox/pkg/timewheel` 的同名入口 |
+
+时间轮的直接入口接收 `*slog.Logger`，使用 `logging.NewSlogLogger(logger)` 保留 NumberMan1/log 日志接入。
+传 nil 给适配器会捕获当前 NumberMan1/log 默认 Logger；直接给时间轮传 nil 则使用 `slog.Default()`。
+两者都不接管日志 core 的关闭责任。完整用法见 [timers 示例](../examples/timers/main.go)。

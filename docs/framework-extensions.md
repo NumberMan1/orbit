@@ -71,8 +71,8 @@ Store 不就绪时，Pool 保留既有节点并报告降级，不依据坏数据
 
 日志统一使用 `github.com/NumberMan1/log v0.3.1`。组件参数接收 `serverlog.Logger`，结构化字段使用 field 包；应用创建并拥有 core，停止所有组件后 Close。文件输出交给上游 FilePrinter，可配置队列、刷新周期、时间轮转、BlockOnFull/DropNewest 和 OnError，通过 Err/Dropped 观测。原本地 NewRotatingWriter 已移除，按大小限额/备份数不再由框架提供。默认 core 没有输出器，nil Logger 使用前需要应用 Configure。完整装配与关闭限制见 [日志接入](../logging/README.md)。
 
-`util.Bitmap` 使用 [0,size) 边界，重复 Add/Remove 不改变计数，Load 校验长度和 padding 后才提交，Bytes/Load 都复制数据。旧 NewBitMap(max) 的 max 是包含端点的，新接口传入的是容量，迁移时注意换算。Bitmap 是 owner 管理的结构，没有内置并发锁。
+numbox `bitmap.Bitmap` 使用 [0,size) 边界，重复 Add/Remove 不改变计数，Load 校验长度和 padding 后才提交，Bytes/Load 都复制数据。旧 NewBitMap(max) 的 max 是包含端点的，新接口传入的是容量，迁移时注意换算。Bitmap 是 owner 管理的结构，没有内置并发锁。
 
-`util.Matcher` 从调用方词表构造不可变 Unicode trie，支持重叠匹配，返回 rune 半开区间。Replace 保留未匹配文本、空格和符号；不会再擅自删除空格或 `&`。空词/非法 UTF-8 词条忽略，非法 UTF-8 输入不匹配且替换保持原样。无隐式大小写折叠、规范化或业务词库。扫描最坏为 O(文本长度 × 最大词长)，不是 Aho–Corasick 线性多模式实现。
+numbox `matcher.Matcher` 从调用方词表构造不可变 Unicode 匹配器，支持重叠匹配，返回 rune 半开区间。Replace 保留未匹配文本、空格和符号；不会再擅自删除空格或 `&`。空词/非法 UTF-8 词条忽略，非法 UTF-8 输入不匹配且替换保持原样。无隐式大小写折叠、规范化或业务词库。v0.4.2 使用失败链接，Contains/Replace 的文本扫描为 O(n)，Find 枚举 k 个匹配后排序，总计 O(n + k log k)。
 
-`util.WriteFull` 补齐通用完整写入，拒绝零进展和非法返回计数。字节/字符串使用安全的 `[]byte(s)` 和 `string(b)` 转换；时间使用 time.UnixMilli/Unix、ParseInLocation、Date/AddDate，不恢复 unsafe 别名或固定凌晨 5 点的业务日历规则。时间轮和可暂停计时器见 [单独说明](timers.md)。
+numbox `ioutil.WriteFull` 补齐通用完整写入，拒绝零进展和非法返回计数。字节/字符串使用安全的 `[]byte(s)` 和 `string(b)` 转换；时间使用 time.UnixMilli/Unix、ParseInLocation、Date/AddDate，不恢复 unsafe 别名或固定凌晨 5 点的业务日历规则。时间轮和可暂停计时器见 [单独说明](timers.md)。

@@ -67,7 +67,7 @@ JSON 编解码直接使用标准库 `encoding/json/v2`，Go 1.27.2 无需手动�
 
 Stop 停止接受新任务并排空已接受任务。不要在队列回调中调用自己的 Stop 等待自己退出；应通知外层取消应用。将队列作为网络监听器之前的组件，这样网络先停止、队列再排空。
 
-`util.After` 与 `util.Every` 是阻塞型定时助手，调用方管理其 goroutine 和 panic 策略。回调串行，慢回调会合并 ticker 的 tick，不会补发全部过期 tick。没有全局时间状态，也没有业务回调类型。大量任务可使用 util.TimeWheel[K] 由 Queue 推进，轮询/暂停计时使用 PollTimer；持久化调度仍由应用实现。详见 [时间轮设计](timers.md)。
+numbox 的 `numtime.After` 与 `numtime.Every` 是阻塞型定时助手，调用方管理其 goroutine 和 panic 策略。回调串行，慢回调会合并 ticker 的 tick，不会补发全部过期 tick。没有全局时间状态，也没有业务回调类型。大量任务可使用 timewheel.TimeWheel[K] 由 Queue 推进，轮询/暂停计时使用 PollTimer；持久化调度仍由应用实现。详见 [时间轮设计](timers.md)。
 
 `Session.Heartbeat` 同样是阻塞函数，通过 factory 生成应用心跳帧；它随传入 context 或 Session 关闭退出。心跳消息 ID、ACK 和超时判定属于应用协议，框架不固定它们。
 

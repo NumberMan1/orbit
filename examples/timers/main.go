@@ -9,8 +9,9 @@ import (
 
 	serverlog "github.com/NumberMan1/log"
 	"github.com/NumberMan1/log/field"
+	"github.com/NumberMan1/numbox/pkg/timewheel"
+	"github.com/NumberMan1/orbit/logging"
 	"github.com/NumberMan1/orbit/service"
-	"github.com/NumberMan1/orbit/util"
 )
 
 func main() { os.Exit(mainCode()) }
@@ -32,7 +33,7 @@ func mainCode() int {
 func run(logger serverlog.Logger) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	wheel, err := util.NewTimeWheel[string](time.Now(), util.WheelOptions{Tick: 10 * time.Millisecond, Slots: 256, Logger: logger})
+	wheel, err := timewheel.NewTimeWheel[string](time.Now(), timewheel.WheelOptions{Tick: 10 * time.Millisecond, Slots: 256, Logger: logging.NewSlogLogger(logger)})
 	if err != nil {
 		return err
 	}

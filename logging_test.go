@@ -15,10 +15,11 @@ import (
 
 	serverlog "github.com/NumberMan1/log"
 	"github.com/NumberMan1/log/field"
+	"github.com/NumberMan1/numbox/pkg/timewheel"
+	"github.com/NumberMan1/orbit/logging"
 	"github.com/NumberMan1/orbit/service"
 	"github.com/NumberMan1/orbit/socket"
 	"github.com/NumberMan1/orbit/socket/tcp"
-	"github.com/NumberMan1/orbit/util"
 )
 
 type logRecord struct {
@@ -65,7 +66,7 @@ func TestComponentsReportPanicsWithoutClosingBorrowedLogger(t *testing.T) {
 		t.Fatal(err)
 	}
 	start := time.Now()
-	wheel, err := util.NewTimeWheel[int](start, util.WheelOptions{Tick: time.Millisecond, Slots: 2, Logger: logger})
+	wheel, err := timewheel.NewTimeWheel[int](start, timewheel.WheelOptions{Tick: time.Millisecond, Slots: 2, Logger: logging.NewSlogLogger(logger)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +126,7 @@ func TestWheelCapturesDefaultLoggerAndPreservesPanicValue(t *testing.T) {
 	raw.AddPrinter(serverlog.LevelSwitchLte(serverlog.TraceLevel), printer)
 	serverlog.SetDefaultLogger(raw)
 	start := time.Unix(0, 0)
-	wheel, err := util.NewTimeWheel[int](start, util.WheelOptions{Tick: time.Millisecond, Slots: 2})
+	wheel, err := timewheel.NewTimeWheel[int](start, timewheel.WheelOptions{Tick: time.Millisecond, Slots: 2, Logger: logging.NewSlogLogger(nil)})
 	if err != nil {
 		t.Fatal(err)
 	}

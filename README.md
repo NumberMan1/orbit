@@ -20,7 +20,8 @@ go get github.com/NumberMan1/orbit@latest
 
 生产项目应固定经过验证的 tag 或提交版本。API 文档见 [pkg.go.dev](https://pkg.go.dev/github.com/NumberMan1/orbit)，
 发布记录见 [Releases](https://github.com/NumberMan1/orbit/releases)。公开前文档与徽章可能尚不可用。
-时间轮依赖 `github.com/NumberMan1/numbox v0.4.1`，日志依赖 `github.com/NumberMan1/log v0.3.1`，均通过 Go module 引入。
+通用工具与时间轮依赖 `github.com/NumberMan1/numbox v0.4.2`，日志依赖 `github.com/NumberMan1/log v0.3.1`，均通过 Go module 引入。
+直接导入 numbox 对应包；旧 util 包已删除，见 [迁移映射](docs/migration.md#直接使用-numbox-v0422026-10-19)。
 
 ## 快速运行
 
@@ -60,7 +61,6 @@ JSON 直接使用标准库 `encoding/json/v2`，Go 1.27.2 无需手动启用实�
 | [storage/mysql](storage/mysql/README.md) | 有界 SQL 连接池、可选 GORM，调用方持有并关闭连接 |
 | [storage/redis](storage/redis/README.md) | 单机/集群连接、上下文及 TLS、启动检查 |
 | [config](config/README.md) | 泛型 YAML 加载、严格校验、带字段策略和版本的原子热更新 |
-| [util](util/README.md) | 时间轮、可暂停计时器、位图、Unicode 匹配、完整写入 |
 | [logging](logging/README.md) | NumberMan1/log v0.3.1 接入指南：结构化字段、异步文件输出与生命周期 |
 | [health](health/README.md) | 聚合存活/就绪检查，排空期间取消就绪 |
 | [request](request/README.md) | 有界请求响应、远端取消/截止时间、心跳应答与失活检测 |

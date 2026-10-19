@@ -1,6 +1,6 @@
 # rocommon 逐文件迁移核对
 
-核对日期：2026-10-16。来源为用户指定的 `RO_Server_Trunk-branch_0.1.39/rocommon`。本表覆盖该目录全部 47 个 Go 源文件；逐项区分已迁移、标准库/架构替代及明确排除，避免将“有一个类似组件”误写成完整覆盖。
+核对日期：2026-10-16；工具接入映射更新于 2026-10-19。来源为用户指定的 `RO_Server_Trunk-branch_0.1.39/rocommon`。本表覆盖该目录全部 47 个 Go 源文件；逐项区分已迁移、标准库/架构替代及明确排除，避免将“有一个类似组件”误写成完整覆盖。
 
 不承诺旧 API 原样兼容。替代项需修改调用方；未迁入业务协议、密钥、账号/支付/玩家状态及区服策略。源工程保持只读。
 
@@ -47,18 +47,18 @@
 | `socket/websocket/session.go` | 已迁移通用部分 | 共享 socket.Session、对应 Transport | 有界发送、收发钩子、附加状态、地址；业务加密/心跳 ID 排除 |
 | `syncrecv.go` | 已补齐 | socket.Inbox、Connector.WaitSession | 有界接收、取消、关闭，不再只等待一次事件 |
 | `sysmsg.go` | 已重构 | Options.OnOpen/OnClose、Connector.Status/WaitSession | 连接事件由显式钩子和状态表达 |
-| `util/bitmap.go` | 已补齐 | util.Bitmap | 边界、幂等计数、复制所有权、装载校验 |
-| `util/dfa_filter.go` | 已补齐 | util.Matcher | Unicode、重叠匹配、保留原文本；词表/归一化由应用注入 |
-| `util/ioutil.go` | 已补齐/安全替代 | util.WriteFull、io/os、普通 byte/string 转换 | 拒绝零进展，不迁入 unsafe 可写字符串别名 |
+| `util/bitmap.go` | 已补齐 | numbox bitmap.Bitmap | 边界、幂等计数、复制所有权、装载校验 |
+| `util/dfa_filter.go` | 已补齐 | numbox matcher.Matcher | Unicode、重叠匹配、保留原文本；词表/归一化由应用注入 |
+| `util/ioutil.go` | 已补齐/安全替代 | numbox ioutil.WriteFull、io/os、普通 byte/string 转换 | 拒绝零进展，不迁入 unsafe 可写字符串别名 |
 | `util/loghelper.go` | 已迁移通用部分 | NumberMan1/log v0.3.1 | 结构化字段/异步时间轮转；上报由应用显式配置，不携带业务索引 |
-| `util/timer.go` | 已迁移通用部分 | util.PollTimer/After/Every、标准库 time | 暂停剩余时长、统一 duration；固定时区/5 点刷新属于业务 |
-| `util/timewheel.go` | 已迁至 numbox v0.3.0 | util.TimeWheel[K] 类型别名与日志适配 | 按 key 新增/取消/重设/周期、显式推进；无角色保存字段 |
+| `util/timer.go` | 已迁移通用部分 | numbox time.PollTimer/After/Every、标准库 time | 暂停剩余时长、统一 duration；固定时区/5 点刷新属于业务 |
+| `util/timewheel.go` | 直接使用 numbox v0.4.2 | timewheel.TimeWheel[K] 与 logging.NewSlogLogger | 按 key 新增/取消/重设/周期、显式推进；无角色保存字段 |
 
 原 go.mod/go.sum 不照搬，使用目标项目的 Go 1.27.2 和固定依赖。roserver/baseserver 不是此表的源码范围，不能因为名字带 base 就视为全部业务无关。
 
 ## 验证入口
 
-- 时间轮/轮询/集合/IO：`util/*_test.go`；含边界、回调内删除/重设、暂停、重复计数、Unicode 重叠及局部基准。
+- 时间轮/轮询/集合/IO 的算法测试与基准由 numbox 维护；Orbit 保留 `numbox_test.go` 的版本回归、`logging_test.go` 的时间轮日志接入测试及 `examples/timers` 的 Queue 组合示例。
 - 消息/会话/连接器：`codec/registry_test.go`、`socket/extensions_test.go`、`socket/connector_transport_test.go` 和 TCP/TLS/WS 测试。
 - HTTP/日志：`socket/http/form_test.go`、根目录 `logging_test.go`，验证 HTTP 限量/状态码，以及日志字段、借用所有权和异步排空。
 - 注册/目录/协调：`discovery/etcd_integration_test.go`、`pool_test.go`、`pool_integration_test.go`，验证删除恢复、接管防护、更新所有权、节点替换和失败清理，以及真实 etcd 发现到 TCP 收发/关闭的完整链路。

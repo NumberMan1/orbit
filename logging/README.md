@@ -1,8 +1,8 @@
 # 日志接入
 
-Orbit 直接使用 `github.com/NumberMan1/log v0.3.1` 的 Logger/field 接口。本目录仅保留接入说明，不再提供本地日志实现或轮转 writer。
+Orbit 直接使用 `github.com/NumberMan1/log v0.3.1` 的 Logger/field 接口。本包仅提供 `NewSlogLogger`，将 slog 诊断转发到借用的 Logger；不提供本地日志 core 或轮转 writer。
 
-- Session、Queue、Store 和 TimeWheel 接收 `serverlog.Logger`，仅借用，不关闭。应用拥有底层 `*serverlog.L`，应先停止组件及回调，再 Close 日志 core。
+- Session、Queue、Store 接收 `serverlog.Logger`，仅借用，不关闭。应用拥有底层 `*serverlog.L`，应先停止组件及回调，再 Close 日志 core。
 - 未传 Logger 时，在构造时取得 `serverlog.DefaultLogger()` 的快照；上游默认 core 没有 Printer，会静默丢弃输出。应在构造组件前 Configure，或显式注入独立实例。后续替换默认 core 不会更新已有组件引用。
 - `field.Error` 保留原始错误，`With` 添加公共字段；字段中的嵌套对象按只读使用。框架使用 Error 记录故障，不调用会退出进程的 Fatal。
 - FilePrinter 支持异步缓冲、按小时/天轮转；默认队列满时阻塞，可选 DropNewest，并通过 OnError、Err、Dropped 观测故障和丢弃。
@@ -35,3 +35,9 @@ return app.Run(ctx)
 导入别名为 `serverlog "github.com/NumberMan1/log"`，字段包为 `github.com/NumberMan1/log/field`。高级文件策略用 NewFilePrinter 配置后 AddPrinter；core 接管其关闭责任。Sentry 仅在应用显式配置时启用。
 
 可运行的完整入口见 [echo](../examples/echo/main.go)、[discovery](../examples/discovery/main.go) 和 [timers](../examples/timers/main.go)。本项目自身协议继续使用 JSON v2；日志序列化遵循所固定上游版本的实现。
+
+直接使用 numbox 时间轮时，导入 `github.com/NumberMan1/numbox/pkg/timewheel`，
+将 `WheelOptions.Logger` 设为 `logging.NewSlogLogger(logger)`。
+适配器保留原始 error/panic 值，以点号连接分组字段，不修改全局 slog Logger，也不关闭借用的 core。
+`logging.NewSlogLogger(nil)` 捕获构造时的 NumberMan1/log 默认 Logger；
+直接给 numbox 的 Logger 传 nil 则使用 `slog.Default()`，两者默认来源不同。

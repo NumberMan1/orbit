@@ -1,11 +1,14 @@
 # 定时任务：标准定时器、轮询计时器与时间轮
 
-Queue 只提供串行执行上下文；After/Every 只负责单项等待或周期执行。按 key 管理大量独立任务、批量推进、取消与重设使用 `util.TimeWheel[K]`，三种工具按需求共存。
+Queue 只提供串行执行上下文；After/Every 只负责单项等待或周期执行。按 key 管理大量独立任务、批量推进、取消与重设使用 `timewheel.TimeWheel[K]`，三种工具按需求共存。
 
-当前时间轮来自发布依赖 `github.com/NumberMan1/numbox v0.4.1`（导入路径为
-`github.com/NumberMan1/numbox/pkg/timewheel`）。Orbit 的 `util.TimeWheel[K]` 是类型别名，
-`util.NewTimeWheel` 保留原有 `WheelOptions.Logger`，将上游 slog 诊断适配到应用的 NumberMan1/log Logger。
-没有本地 replace 或调度算法副本；原有调用方式及日志 core 所有权不变。
+当前时间轮来自发布依赖 `github.com/NumberMan1/numbox v0.4.2`（导入路径为
+`github.com/NumberMan1/numbox/pkg/timewheel`）。新代码直接调用该包；`numtime` 表示
+`github.com/NumberMan1/numbox/pkg/time`，提供 After/Every/PollTimer。
+直接使用时间轮时，Logger 接收 `*slog.Logger`，nil 使用 `slog.Default()`；
+如需 NumberMan1/log，显式传入 `logging.NewSlogLogger(logger)`，仅借用日志 core。
+旧 `util` 包已删除，调用方须更换导入和构造方式，详见 [迁移映射](migration.md#直接使用-numbox-v0422026-10-19)。
+没有本地 replace 或调度算法副本。
 
 `ErrTimerExists`、`ErrClockBackwards` 和新增的 `ErrInvalidKey` 与上游哨兵一致。
 错误文本前缀变为 `timewheel:`，调用方应使用 `errors.Is` 判断错误。
@@ -14,16 +17,16 @@ Queue 只提供串行执行上下文；After/Every 只负责单项等待或周�
 
 许多游戏服务器要管理大量心跳检查、冷却结束、效果到期和延后任务，并已有固定 tick 的串行逻辑循环。将相近截止时间分入槽位，可以共享一次时钟推进，便于批量处理以及按 key 删除。任务容许几十毫秒粒度时，这种组织方式很合适。这里的业务仅为用途举例，框架没有实现上述业务逻辑。
 
-这不意味着所有游戏服都采用时间轮，也不意味着它一定比 Go 的标准定时器快。`time.Timer` 不会为每个等待项常驻一个 goroutine；Go runtime 管理定时器和唤醒。`time.AfterFunc` 的回调执行才涉及 goroutine。Orbit 的 `util.After/Every` 是阻塞函数，大量独立调用通常需要调用方创建许多 goroutine，这是旧替代方案的真实成本。
+这不意味着所有游戏服都采用时间轮，也不意味着它一定比 Go 的标准定时器快。`time.Timer` 不会为每个等待项常驻一个 goroutine；Go runtime 管理定时器和唤醒。`time.AfterFunc` 的回调执行才涉及 goroutine。numbox 的 `numtime.After/Every` 是阻塞函数，大量独立调用通常需要调用方创建许多 goroutine，这是旧替代方案的真实成本。
 
 | 工具 | 适合 | 成本与限制 |
 | --- | --- | --- |
 | `time.Timer` / context deadline | 少量超时、网络 I/O、独立取消 | runtime 管理到期顺序；不必自行维护槽位 |
-| `util.After/Every` | 少量受生命周期管理的后台周期任务 | 每个独立阻塞调用需要自己的执行上下文；不是批量任务索引 |
-| `util.PollTimer` | 已有 update 循环中的少量对象计时，模拟时钟、暂停/恢复 | 需要主动 Poll；扫描很多不活跃计时器会增加每帧成本 |
-| `util.TimeWheel[K]` | 大量可按 tick 取整、需要 key 取消/重设的任务 | 单个 owner 推进，无每任务 goroutine；精度和单槽突发需权衡 |
+| `numtime.After/Every` | 少量受生命周期管理的后台周期任务 | 每个独立阻塞调用需要自己的执行上下文；不是批量任务索引 |
+| `numtime.PollTimer` | 已有 update 循环中的少量对象计时，模拟时钟、暂停/恢复 | 需要主动 Poll；扫描很多不活跃计时器会增加每帧成本 |
+| `timewheel.TimeWheel[K]` | 大量可按 tick 取整、需要 key 取消/重设的任务 | 单个 owner 推进，无每任务 goroutine；精度和单槽突发需权衡 |
 
-单纯将每个旧时间轮任务变成一个 `go util.After(...)`，对本项目的迁移目标不合适。保留标准定时器作为 I/O 超时工具，同时补回独立的时间轮，边界更明确。
+单纯将每个旧时间轮任务变成一个 `go numtime.After(...)`，对本项目的迁移目标不合适。保留标准定时器作为 I/O 超时工具，同时补回独立的时间轮，边界更明确。
 
 ## 当前时间轮的语义
 
@@ -58,12 +61,12 @@ Wheel 不会替应用停止 Queue。关闭顺序为停止网络输入、排空 Q
 
 ## 修复与验证
 
-旧时间轮没有检查 slotNum；nil key 的任务未从槽移除；删除节点后继续通过被删除节点取 Next 可能漏删；回调修改链表会干扰遍历；槽位与圈数计算在整圈边界存在延迟风险。旧 PollTimer 的暂停剩余时长计算及时间单位混用也不可靠。新实现针对这些边界、回调内取消/重设、panic 隔离、追赶合并、时钟回拨和 10,000 个待处理任务的取消提供测试。
+旧时间轮没有检查 slotNum；nil key 的任务未从槽移除；删除节点后继续通过被删除节点取 Next 可能漏删；回调修改链表会干扰遍历；槽位与圈数计算在整圈边界存在延迟风险。旧 PollTimer 的暂停剩余时长计算及时间单位混用也不可靠。这些算法边界与基准由 numbox 的测试维护。Orbit 验证时间轮与日志的接入和借用所有权，并提供 Queue 组合示例。
 
-可运行局部基准：
+可运行所依赖 numbox 版本的局部基准：
 
 ```sh
-go test ./util -run='^$' -bench='Benchmark(Wheel|Runtime)ScheduleCancel' -benchmem
+go test github.com/NumberMan1/numbox/pkg/timewheel -run='^$' -bench='Benchmark(Wheel|Runtime)ScheduleCancel' -benchmem
 ```
 
 切换 numbox 前的历史基准（Apple M4、Go 1.27.2）：预先保留 10,000 个远期任务，逐项取消并重建，时间轮约 85ns/op、128B/op、2 allocs/op；runtime AfterFunc 约 98ns/op、112B/op、1 alloc/op。这不代表当前 numbox 版本的性能。基准只测索引维护，不测到期执行、调度延迟、并发、真实游戏负载或整体内存占用；性能取舍仍需在当前版本及应用负载下验证。

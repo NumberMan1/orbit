@@ -169,3 +169,15 @@ CI 已更新为 Go 1.27.2 默认配置，本机结果不等同于远程 CI 结�
 - numbox 的 Matcher 优化在独立工作区完成：全量 race、vet、无 CGo 构建通过；16K 公共前缀不匹配基准约 0.53–0.65 毫秒、零分配。另以仓库外临时 Go workspace 明确绑定本地 numbox，Orbit util race 通过，临时文件已清理。此项仅为本地联调，正式 v0.4.1 尚不含算法优化；需发布新 tag 后升级 Orbit 依赖。
 
 本轮未提交或推送代码，未发布新 tag。先前工作区已有的测试记录文字改动保留。
+
+## numbox v0.4.2 直接接入验证（2026-10-19）
+
+环境为 macOS arm64、Go 1.27.2。通过 Make 的 GO 参数指定该工具链，并在命令环境中移除 GVM 遗留的旧 GOROOT；未修改仓库的 Go 版本要求。
+
+- `go mod tidy` 更新 numbox v0.4.2 校验值，未引入本地 replace 或 go.work。
+- `make verify` 通过：格式、vet、全库 race、构建与生成代码一致性检查。
+- `make fuzz` 通过：FuzzRead 和 FuzzMetadata 各运行 10 秒。
+- `go run ./examples/timers` 输出三次 pulse 后正常退出，示例直接使用 numbox 时间轮。
+- 删除 util 包后再次执行 `go mod tidy`、`make verify` 和 `make fuzz`；不保留兼容转发。
+- `numbox_test.go` 直接验证 Matcher 后缀/重叠匹配与 rune 排序；日志接入测试覆盖级别、分组、默认 Logger 快照、原始 panic 值和借用 core 所有权。原 util 算法测试随包删除，算法完整验证由 numbox 维护。
+- `git diff --check` 通过。本次未修改发现或存储行为，未运行依赖真实服务的集成测试；上述结果不代表真实 etcd/MySQL/Redis 验证。
