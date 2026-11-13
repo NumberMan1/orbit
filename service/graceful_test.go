@@ -45,6 +45,26 @@ func (c *gracefulComponent) Stop(context.Context) error {
 	return nil
 }
 
+func TestGracefulAppDoesNotStartWithCanceledContext(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var log []string
+		app, err := NewApp(time.Second, &gracefulComponent{name: "listener", log: &log})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithCancelCause(t.Context())
+		cause := errors.New("startup canceled")
+		cancel(cause)
+
+		if err := app.RunGraceful(ctx); !errors.Is(err, cause) {
+			t.Errorf("RunGraceful returned %v, want %v", err, cause)
+		}
+		if len(log) != 0 {
+			t.Errorf("canceled app touched components: %v", log)
+		}
+	})
+}
+
 func TestGracefulAppPhases(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var log []string

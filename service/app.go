@@ -39,7 +39,8 @@ func (a *App) Run(ctx context.Context) error {
 // RunGraceful retains component contexts during normal shutdown: all Quiesce
 // hooks run first, then Drain hooks in reverse dependency order, then cancellation
 // and Stop. One timeout bounds the entire shutdown. Startup cancellation and
-// component failure still abort immediately. Custom hooks must honor their budget.
+// component failure still abort immediately. An already-canceled context starts
+// no components. Custom hooks must honor their budget.
 // Components without Drain retain the existing Stop contract.
 func (a *App) RunGraceful(ctx context.Context) error { return a.run(ctx, true) }
 
@@ -52,6 +53,9 @@ type Drainer interface{ Drain(context.Context) error }
 func (a *App) run(ctx context.Context, graceful bool) error {
 	if !a.used.CompareAndSwap(false, true) {
 		return errors.New("service: app already run")
+	}
+	if cause := context.Cause(ctx); cause != nil {
+		return cause
 	}
 	parent := ctx
 	if graceful {

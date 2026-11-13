@@ -7,6 +7,7 @@
 
 ### 审查修复
 
+- service.App.RunGraceful 在入口 context 已取消时直接返回取消原因，避免启动监听器或其他组件。
 - request.Server 等待 Queued/Async 实际完成，保留请求 context 和并发名额；Session 断连后先等待已接受工作，再执行 OnClose/清理状态。Drain 继续接收控制/响应帧并跟踪出站 Call；心跳正常退出排空。
 - Picker/Balancer 为每个服务独立轮询；临时未就绪保留熔断冷却，成员变更/断线清理旧状态。路由目录只在变化时复制和排序。
 - Redis 默认禁用隐式命令重放，新增显式 Retries/ClusterRedirects；集群 MOVED/ASK 跟随需显式启用，并承担网络错误重试可能重复写的风险。

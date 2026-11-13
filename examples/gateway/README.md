@@ -15,7 +15,7 @@ go run ./examples/gateway
 - `/metrics`：JSON 计数快照；本例所有配置了 Metrics 的进程内会话共用一个 collector。
 - `/metrics/prometheus`：固定基数的调用、执行与队列等待延迟直方图。
 
-按 Ctrl+C 或发送 SIGTERM 使用 RunGraceful 退出。应用不包含认证，只供本机演示；不要直接将管理接口暴露到公网。
+按 Ctrl+C 或发送 SIGTERM 使用 RunGraceful 退出。若进入 RunGraceful 前已收到退出信号，应用会直接返回取消原因，组件不会启动。应用不包含认证，只供本机演示；不要直接将管理接口暴露到公网。
 
 也可自动验证请求往返和退出流程，端口设为 0 避免占用固定端口：
 
