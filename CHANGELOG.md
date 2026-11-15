@@ -38,6 +38,8 @@
 
 ### 依赖与时间轮
 
+- etcd API、客户端与客户端工具包同步升级至 v3.7.3，更新 Watch 响应头的测试构造。MySQL 驱动升级至 v1.10.1，GORM 升级至 v1.31.2，Go Protobuf 升级至 v1.36.12。
+
 - numbox 升级至 v0.4.2，采用上游 Matcher 失败链接扫描优化，保持 Unicode 区间、排序和替换语义。
 - **不兼容变更**：删除整个 util 包及其类型别名、构造函数、错误哨兵和转发入口，调用方直接导入 numbox 对应子包，迁移映射见 [迁移说明](docs/migration.md#直接使用-numbox-v0422026-10-19)。
 - 时间轮示例和组件日志测试直接使用 numbox；新增 `logging.NewSlogLogger` 统一适配 NumberMan1/log，组件仍不拥有日志 core。

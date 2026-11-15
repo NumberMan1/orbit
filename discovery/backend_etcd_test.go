@@ -6,6 +6,7 @@ import (
 	"errors"
 	"testing"
 
+	"go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
@@ -24,13 +25,9 @@ func TestEtcdWatcherIgnoresCreatedAndPreservesTransactionRevisions(t *testing.T)
 	defer cancel()
 	responses := make(chan clientv3.WatchResponse, 3)
 	w := &etcdWatcher{registry: &Registry{prefix: "/test/"}, responses: responses, ctx: ctx, cancel: cancel}
-	created := clientv3.WatchResponse{Created: true}
-	created.Header.Revision = 100
-	responses <- created
+	responses <- clientv3.WatchResponse{Created: true, Header: &etcdserverpb.ResponseHeader{Revision: 100}}
 	responses <- clientv3.WatchResponse{Events: []*clientv3.Event{wireEvent(t, 11, "a"), wireEvent(t, 11, "b"), wireEvent(t, 12, "a")}}
-	progress := clientv3.WatchResponse{}
-	progress.Header.Revision = 13
-	responses <- progress
+	responses <- clientv3.WatchResponse{Header: &etcdserverpb.ResponseHeader{Revision: 13}}
 	for _, want := range []struct {
 		revision int64
 		count    int
