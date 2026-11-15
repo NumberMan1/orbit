@@ -5,7 +5,7 @@ go 1.27.2
 require (
 	github.com/NumberMan1/log v0.3.1
 	github.com/NumberMan1/numbox v0.4.2
-	github.com/go-sql-driver/mysql v1.9.3
+	github.com/go-sql-driver/mysql v1.10.1
 	github.com/gorilla/websocket v1.5.3
 	github.com/redis/go-redis/v9 v9.23.0
 	go.etcd.io/etcd/api/v3 v3.7.3
@@ -17,7 +17,7 @@ require (
 )
 
 require (
-	filippo.io/edwards25519 v1.1.0 // indirect
+	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/coreos/go-semver v0.3.1 // indirect
 	github.com/coreos/go-systemd/v22 v22.7.0 // indirect
