@@ -38,6 +38,8 @@ func TestAmbiguousWriteReplayRequiresOptIn(t *testing.T) {
 								return
 							}
 							switch strings.ToUpper(args[0]) {
+							case "HELLO":
+								fmt.Fprint(conn, "-ERR unknown command 'HELLO'\r\n")
 							case "PING":
 								fmt.Fprint(conn, "+PONG\r\n")
 							case "INCR":

@@ -7,7 +7,7 @@ import (
 	"errors"
 	"time"
 
-	rdb "github.com/go-redis/redis/v8"
+	rdb "github.com/redis/go-redis/v9"
 )
 
 type Options struct {
@@ -21,7 +21,7 @@ type Options struct {
 	// Zero disables retries; positive values are unsafe for non-idempotent writes
 	// unless the application provides its own deduplication protocol.
 	Retries int
-	// ClusterRedirects also retries network failures in the v8 cluster client.
+	// ClusterRedirects also retries network failures in the cluster client.
 	// Zero disables automatic redirects/replays; opt in deliberately for clusters.
 	ClusterRedirects int
 }
@@ -49,9 +49,17 @@ func Open(ctx context.Context, o Options) (rdb.UniversalClient, error) {
 		redirects = -1
 	}
 	if o.Cluster {
-		client = rdb.NewClusterClient(&rdb.ClusterOptions{MaxRetries: retries, MaxRedirects: redirects, Addrs: append([]string(nil), o.Addresses...), Username: o.Username, Password: o.Password, TLSConfig: tlsConfig, DialTimeout: 5 * time.Second, ReadTimeout: 3 * time.Second, WriteTimeout: 3 * time.Second})
+		client = rdb.NewClusterClient(&rdb.ClusterOptions{
+			Addrs: append([]string(nil), o.Addresses...), Username: o.Username, Password: o.Password, TLSConfig: tlsConfig,
+			Protocol: 2, ContextTimeoutEnabled: true, MaxRetries: retries, MaxRedirects: redirects,
+			DialTimeout: 5 * time.Second, ReadTimeout: 3 * time.Second, WriteTimeout: 3 * time.Second,
+		})
 	} else {
-		client = rdb.NewClient(&rdb.Options{MaxRetries: retries, Addr: o.Addresses[0], Username: o.Username, Password: o.Password, DB: o.DB, TLSConfig: tlsConfig, DialTimeout: 5 * time.Second, ReadTimeout: 3 * time.Second, WriteTimeout: 3 * time.Second})
+		client = rdb.NewClient(&rdb.Options{
+			Addr: o.Addresses[0], Username: o.Username, Password: o.Password, DB: o.DB, TLSConfig: tlsConfig,
+			Protocol: 2, ContextTimeoutEnabled: true, MaxRetries: retries,
+			DialTimeout: 5 * time.Second, ReadTimeout: 3 * time.Second, WriteTimeout: 3 * time.Second,
+		})
 	}
 	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()

@@ -11,7 +11,7 @@
 | --- | --- |
 | `github.com/NumberMan1/numbox` | `pkg/timewheel` 时间轮、`pkg/matcher` 版本回归 |
 | `github.com/NumberMan1/log` | 结构化日志与输出生命周期 |
-| `github.com/go-redis/redis/v8` | Redis 客户端 |
+| `github.com/redis/go-redis/v9` | Redis 客户端 |
 | `github.com/go-sql-driver/mysql` | MySQL 驱动 |
 | `github.com/gorilla/websocket` | WebSocket 传输 |
 | `go.etcd.io/etcd/api/v3`、`go.etcd.io/etcd/client/v3` | etcd 服务发现 |

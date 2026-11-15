@@ -7,6 +7,8 @@
 
 ### 审查修复
 
+- Redis 驱动迁移到 go-redis/v9，支持 Redis 8 Cluster 槽位元数据。显式引用 Redis 类型或错误哨兵的调用方需要同步更改导入路径。
+
 - service.App.RunGraceful 在入口 context 已取消时直接返回取消原因，避免启动监听器或其他组件。
 - request.Server 等待 Queued/Async 实际完成，保留请求 context 和并发名额；Session 断连后先等待已接受工作，再执行 OnClose/清理状态。Drain 继续接收控制/响应帧并跟踪出站 Call；心跳正常退出排空。
 - Picker/Balancer 为每个服务独立轮询；临时未就绪保留熔断冷却，成员变更/断线清理旧状态。路由目录只在变化时复制和排序。
