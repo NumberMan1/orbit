@@ -31,6 +31,22 @@ jobs:
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 GOTOOLCHAIN=local go build ./...
           CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 GOTOOLCHAIN=local go build ./...
 
+  cpp:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.2'
+          cache: true
+      - run: cmake -S cpp -B bin/orbit-cpp -DCMAKE_BUILD_TYPE=Release -DORBIT_CPP_TEST_GO_INTEROP=ON
+      - run: cmake --build bin/orbit-cpp --config Release
+      - run: ctest --test-dir bin/orbit-cpp -C Release --output-on-failure
+
   infrastructure:
     runs-on: ubuntu-latest
     timeout-minutes: 20

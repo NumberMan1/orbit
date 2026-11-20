@@ -42,6 +42,8 @@ curl http://127.0.0.1:9001/healthz
 
 客户端输出 `id=1 sequence=42 payload=hello orbit`。示例还在 `127.0.0.1:9002` 提供 WebSocket 二进制回显。按 Ctrl+C 退出服务器会关闭监听器、连接和后台任务。示例不依赖 etcd、MySQL 或 Redis，配置中的三个监听地址可分别留空禁用，但至少保留一个。
 
+也可使用 C++23 客户端连接同一个 TCP 服务，见 [C++ 回显示例](examples/cpp-client/README.md)。
+
 JSON 直接使用标准库 `encoding/json/v2`，Go 1.27.2 无需手动启用实验开关。v2 的字段匹配、空集合和校验行为见 [适配说明](docs/go127.md)。
 
 ## 能力与目录
@@ -51,6 +53,7 @@ JSON 直接使用标准库 `encoding/json/v2`，Go 1.27.2 无需手动启用实�
 | 目录 | 能力 |
 | --- | --- |
 | [rpc](rpc/README.md) | 兼容原明文消息头的帧读写，长度检查、完整读写、序号透传 |
+| [cpp](cpp/README.md) | C++23 帧编解码、同步 TCP 客户端与 CMake 接入 |
 | [codec](codec/README.md) | 实例级 ID/名称/类型注册表，JSON v2、现代 Protobuf |
 | [socket](socket/README.md) | 会话查询/状态、有界收发、类型化消息与回复、收发钩子、队列桥接 |
 | [socket/tcp](socket/tcp/README.md) | TCP/TLS、受管理连接器、退避重连、网络选项 |

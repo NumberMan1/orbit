@@ -17,6 +17,18 @@ make fuzz
 go test ./rpc -run='^$' -fuzz=FuzzRead -fuzztime=60s
 ```
 
+## C++ 客户端
+
+在仓库根目录使用 C++23 编译器、CMake 3.20 以上及 Go 1.27.2 运行测试。
+
+```sh
+cmake -S cpp -B bin/orbit-cpp -DCMAKE_BUILD_TYPE=Release -DORBIT_CPP_TEST_GO_INTEROP=ON
+cmake --build bin/orbit-cpp --config Release
+ctest --test-dir bin/orbit-cpp -C Release --output-on-failure
+```
+
+测试检查固定帧字节向量、载荷边界、截断与非法 flags。互通测试使用回环随机端口验证 Go TCP 服务回显，以及 C++ 客户端读到不完整载荷时超时断开。单独验证帧编解码可将 `ORBIT_CPP_TEST_GO_INTEROP` 设为 `OFF`。
+
 ## 基础设施集成
 
 安装 etcd 可执行文件并确保它在 PATH 中。测试自行启动一个使用临时数据目录和回环随机端口的进程，结束后销毁，不接触已有集群。验证续租超过初始 TTL、重复 ID 事务保护、查询/watch 窗口更新、租约丢失和撤销；Store 额外验证事务版本批次、历史版本压缩错误、坏数据不污染旧快照、修复后自动重载、注册节点增删以及停止后客户端仍可使用。

@@ -9,3 +9,5 @@
 - 此包无连接和共享状态；同一流的并发读写排序由 [socket.Session](../socket/README.md) 管理。
 
 消息内容使用 [codec](../codec/README.md)，协议迁移约束见 [迁移说明](../docs/migration.md)。
+
+C++23 的 `orbit::rpc` 编解码同一帧格式，可用 `orbit::TcpClient` 连接 Orbit 的 TCP 服务。见 [C++ 接入说明](../cpp/README.md)。
