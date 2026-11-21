@@ -12,6 +12,8 @@ struct TcpOptions {
   std::size_t max_payload = rpc::max_payload;
   // Each connect, send and receive has its own whole-operation timeout.
   std::chrono::milliseconds timeout{5000};
+  // Set false to allow Nagle's algorithm on this connection.
+  bool no_delay = true;
 };
 
 // Synchronous, plaintext TCP client for a numeric IPv4 or IPv6 address.

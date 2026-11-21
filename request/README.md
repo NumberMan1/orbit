@@ -24,6 +24,8 @@ reply, err := client.Call(ctx, rpc.Frame{ID: 1, Payload: payload}, 2)
 
 完整组合见 [网关示例](../examples/gateway/README.md) 和 [生产能力说明](../docs/production.md)。
 
+Go `Client` 可以使用默认的明文 TCP 请求格式调用 C++23 `orbit::RequestServer`。双方约定请求与响应 ID，服务端保留原序号并拒绝同一连接的重复在途序号，载荷由应用编解码。C++ 服务端默认在接入连接上启用 `TCP_NODELAY`。见 [C++ 请求服务端示例](../examples/cpp-server/README.md)。
+
 ## 可选远端取消与元数据
 
 - Client.Options.CancelID 和 ServerOptions.CancelID 必须由双方约定、保持一致且与请求/响应/推送 ID 不重叠。零值禁用；取消帧携带原 Sequence、空 Payload。仅取消本连接的匹配调用，未知或迟到取消忽略。

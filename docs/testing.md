@@ -17,7 +17,7 @@ make fuzz
 go test ./rpc -run='^$' -fuzz=FuzzRead -fuzztime=60s
 ```
 
-## C++ 客户端
+## C++ 客户端与请求服务端
 
 在仓库根目录使用 C++23 编译器、CMake 3.20 以上及 Go 1.27.2 运行测试。
 
@@ -27,7 +27,14 @@ cmake --build bin/orbit-cpp --config Release
 ctest --test-dir bin/orbit-cpp -C Release --output-on-failure
 ```
 
-测试检查固定帧字节向量、载荷边界、截断与非法 flags。互通测试使用回环随机端口验证 Go TCP 服务回显，以及 C++ 客户端读到不完整载荷时超时断开。单独验证帧编解码可将 `ORBIT_CPP_TEST_GO_INTEROP` 设为 `OFF`。
+测试检查固定帧字节向量、载荷边界、截断与非法 flags。C++ TCP 测试通过 `getsockopt` 检查客户端和接入套接字上 `TCP_NODELAY` 的开启与关闭，并验证关闭后的回显。互通测试使用回环随机端口验证两个方向。
+
+- C++ 客户端连接 Go TCP 服务，验证回显和不完整载荷超时断开。
+- Go `request.Client` 调用 C++ 请求服务，验证原始载荷往返、乱序回复匹配、单连接并发上限、多个连接之间的过载隔离和断线取消。另通过原始 TCP 流验证拆包与粘包、非法 flags，以及接收侧不读数据时的发送队列条数和字节上限。
+
+C++ 生命周期测试验证空闲连接唤醒、业务回调阻塞时的有界停服、全局等待期间的断线取消和无后续输入时的等待超时，以及重复在途序号拒绝。在 Linux 上另验证慢回调清理期间释放断开的套接字、文件描述符耗尽后的恢复、子进程启动后的端口重新绑定，以及静态库链接进共享库。
+
+单独验证帧编解码可将 `ORBIT_CPP_TEST_GO_INTEROP` 设为 `OFF`。
 
 ## 基础设施集成
 
