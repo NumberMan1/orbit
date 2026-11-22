@@ -3,6 +3,10 @@
 记录面向使用者的变更。发布时填写版本与发布日期；历史详情以
 [Tags](https://github.com/NumberMan1/orbit/tags) 和 [提交记录](https://github.com/NumberMan1/orbit/commits) 为准。
 
+## v0.4.1 (2026-11-22)
+
+- C++ TCP 客户端接受系统解析器支持的出站地址，所有候选共用连接截止时间。新增 `parse_tcp_endpoint` 拆分地址和端口，并保留原始主机部分。
+
 ## v0.4.0 (2026-11-21)
 
 - C++ TCP 客户端和请求服务端默认启用 `TCP_NODELAY`，降低连续发送小帧时的延迟。可通过 `no_delay = false` 关闭。升级时用新头文件重新编译 C++ 调用方。

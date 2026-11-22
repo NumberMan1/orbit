@@ -11,7 +11,7 @@ go run ./examples/echo -config examples/echo/config.yaml
 ```sh
 cmake -S cpp -B bin/orbit-cpp -DCMAKE_BUILD_TYPE=Release
 cmake --build bin/orbit-cpp --config Release
-./bin/orbit-cpp/orbit_cpp_echo 127.0.0.1 9000
+./bin/orbit-cpp/orbit_cpp_echo localhost 9000
 ```
 
 使用 Visual Studio 生成器时，运行 `bin/orbit-cpp/Release/orbit_cpp_echo.exe`。默认地址为 `127.0.0.1:9000`。

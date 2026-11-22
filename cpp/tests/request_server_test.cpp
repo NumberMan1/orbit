@@ -2,6 +2,7 @@
 
 #include <orbit/request_server.hpp>
 #include <orbit/tcp_client.hpp>
+#include <orbit/tcp_endpoint.hpp>
 
 #include <atomic>
 #include <condition_variable>
@@ -10,6 +11,7 @@
 #include <iostream>
 #include <mutex>
 #include <stdexcept>
+#include <string_view>
 #include <system_error>
 #include <thread>
 
@@ -88,6 +90,48 @@ void check_no_delay_opt_out() {
   orbit::RequestServer server("127.0.0.1", 0, {{1, echo}}, {.no_delay = false});
   orbit::TcpClient client("127.0.0.1", server.port(), {.no_delay = false});
   check_reply(client, 1);
+}
+
+void check_tcp_endpoint() {
+  const auto named = orbit::parse_tcp_endpoint("battle_server:8084");
+  require(named.host == "battle_server" && named.port == 8084, "local alias was not preserved");
+  const auto bracketed = orbit::parse_tcp_endpoint("[local resolver alias]:8084");
+  require(bracketed.host == "local resolver alias" && bracketed.port == 8084,
+          "endpoint parser applied a host name policy");
+  const auto v4 = orbit::parse_tcp_endpoint("127.0.0.1:65535");
+  require(v4.host == "127.0.0.1" && v4.port == 65535, "IPv4 endpoint was not parsed");
+  const auto v6 = orbit::parse_tcp_endpoint("[::1]:0", orbit::TcpEndpointUse::listen);
+  require(v6.host == "::1" && v6.port == 0, "IPv6 listener endpoint was not parsed");
+  const auto scoped = orbit::parse_tcp_endpoint("[fe80::1%eth0]:8084");
+  require(scoped.host == "fe80::1%eth0" && scoped.port == 8084, "IPv6 scope was not preserved");
+
+  using namespace std::string_view_literals;
+  for (const auto invalid : {"localhost"sv, ":8084"sv, "localhost:"sv, "localhost:0"sv,
+                             "localhost:65536"sv, "localhost:8084x"sv, "[::1]:+1"sv,
+                             "::1:8084"sv, "[::1:8084"sv, "[[alias]]:8084"sv,
+                             "localhost\0other:8084"sv}) {
+    try {
+      (void)orbit::parse_tcp_endpoint(invalid);
+    } catch (const std::invalid_argument&) {
+      continue;
+    }
+    throw std::runtime_error("accepted invalid endpoint: " + std::string(invalid));
+  }
+}
+
+void check_connect_by_hostname() {
+  orbit::RequestServer server("127.0.0.1", 0, {{1, echo}});
+  const auto endpoint = orbit::parse_tcp_endpoint("localhost:" + std::to_string(server.port()));
+  orbit::TcpClient client(endpoint.host, endpoint.port, {.timeout = 500ms});
+  check_reply(client, 1);
+
+  using namespace std::string_literals;
+  try {
+    orbit::TcpClient truncated("127.0.0.1\0other"s, server.port());
+  } catch (const std::invalid_argument&) {
+    return;
+  }
+  throw std::runtime_error("connected to a host truncated at an embedded NUL");
 }
 
 void check_idle_shutdown() {
@@ -347,6 +391,8 @@ void check_descriptor_pressure() {
 
 int main() {
   try {
+    check_tcp_endpoint();
+    check_connect_by_hostname();
     check_no_delay();
     check_no_delay_opt_out();
     check_idle_shutdown();

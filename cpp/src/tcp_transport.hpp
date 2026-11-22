@@ -70,7 +70,7 @@ class SocketInterrupt {
 };
 
 void validate_timeout(Milliseconds timeout);
-SocketHandle connect_tcp(const std::string& ip, std::uint16_t port, Deadline deadline,
+SocketHandle connect_tcp(const std::string& host, std::uint16_t port, Deadline deadline,
                          bool no_delay);
 SocketHandle listen_tcp(const std::string& ip, std::uint16_t port, int backlog);
 std::uint16_t bound_port(Socket listener);

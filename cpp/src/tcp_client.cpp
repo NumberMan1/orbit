@@ -12,16 +12,16 @@ struct TcpClient::Connection {
   detail::SocketHandle socket;
 };
 
-TcpClient::TcpClient(const std::string& ip, std::uint16_t port, TcpOptions options)
+TcpClient::TcpClient(const std::string& host, std::uint16_t port, TcpOptions options)
     : options_(options) {
   rpc::detail::validate_limit(options.max_payload);
   detail::validate_timeout(options.timeout);
   if (port == 0) {
-    throw std::invalid_argument("orbit: expected a numeric IP and a nonzero port");
+    throw std::invalid_argument("orbit: expected a nonzero TCP port");
   }
   const auto deadline = detail::Clock::now() + options.timeout;
   connection_ = std::make_unique<Connection>();
-  connection_->socket = detail::connect_tcp(ip, port, deadline, options.no_delay);
+  connection_->socket = detail::connect_tcp(host, port, deadline, options.no_delay);
 }
 
 TcpClient::~TcpClient() = default;

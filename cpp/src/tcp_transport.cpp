@@ -2,6 +2,7 @@
 
 #include <array>
 #include <climits>
+#include <exception>
 #include <memory>
 #include <stdexcept>
 #include <system_error>
@@ -215,19 +216,25 @@ void read_all(Socket socket, std::span<std::uint8_t> bytes, Deadline deadline, s
 
 using Address = std::unique_ptr<addrinfo, decltype(&::freeaddrinfo)>;
 
-Address numeric_address(const std::string& ip, std::uint16_t port) {
-  if (ip.empty() || ip.find('\0') != std::string::npos) {
-    throw std::invalid_argument("orbit: expected a numeric IPv4 or IPv6 address");
+Address resolve_addresses(const std::string& host, std::uint16_t port, bool numeric_only) {
+  // Reject NUL so getaddrinfo cannot resolve a truncated input.
+  if (host.empty() || host.contains('\0')) {
+    throw std::invalid_argument("orbit: invalid TCP host");
   }
   addrinfo hints{};
   hints.ai_family = AF_UNSPEC;
   hints.ai_socktype = SOCK_STREAM;
   hints.ai_protocol = IPPROTO_TCP;
-  hints.ai_flags = AI_NUMERICHOST | AI_NUMERICSERV;
+  hints.ai_flags = AI_NUMERICSERV | (numeric_only ? AI_NUMERICHOST : 0);
   addrinfo* raw_address = nullptr;
   const auto service = std::to_string(port);
-  if (::getaddrinfo(ip.c_str(), service.c_str(), &hints, &raw_address) != 0) {
-    throw std::invalid_argument("orbit: expected a numeric IPv4 or IPv6 address");
+  const int error = ::getaddrinfo(host.c_str(), service.c_str(), &hints, &raw_address);
+  if (error != 0) {
+    if (numeric_only) {
+      throw std::invalid_argument("orbit: expected a numeric IPv4 or IPv6 address");
+    }
+    throw std::runtime_error("orbit: TCP host resolution failed (getaddrinfo " +
+                             std::to_string(error) + ")");
   }
   return Address(raw_address, ::freeaddrinfo);
 }
@@ -345,17 +352,37 @@ void validate_timeout(Milliseconds timeout) {
   }
 }
 
-SocketHandle connect_tcp(const std::string& ip, std::uint16_t port, Deadline deadline,
+SocketHandle connect_tcp(const std::string& host, std::uint16_t port, Deadline deadline,
                          bool no_delay) {
-  const auto address = numeric_address(ip, port);
-  auto socket = open_socket(*address);
-  connect_socket(socket.get(), *address, deadline);
-  set_tcp_no_delay(socket.get(), no_delay);
-  return socket;
+  const auto addresses = resolve_addresses(host, port, false);
+  Clock::duration::rep candidates = 0;
+  for (auto* address = addresses.get(); address; address = address->ai_next) {
+    ++candidates;
+  }
+  std::exception_ptr failure;
+  // Try candidates only while establishing the connection. The caller owns all I/O retries.
+  for (auto* address = addresses.get(); address; address = address->ai_next) {
+    const auto remaining = remaining_time(deadline, "orbit: TCP connect timed out", {});
+    // A stalled first address should leave time to try the other addresses.
+    const auto attempt_deadline = deadline - remaining + remaining / candidates;
+    --candidates;
+    try {
+      auto socket = open_socket(*address);
+      connect_socket(socket.get(), *address, attempt_deadline);
+      set_tcp_no_delay(socket.get(), no_delay);
+      return socket;
+    } catch (const std::system_error&) {
+      failure = std::current_exception();
+    }
+  }
+  if (failure) {
+    std::rethrow_exception(failure);
+  }
+  throw std::runtime_error("orbit: TCP host has no usable address");
 }
 
 SocketHandle listen_tcp(const std::string& ip, std::uint16_t port, int backlog) {
-  const auto address = numeric_address(ip, port);
+  const auto address = resolve_addresses(ip, port, true);
   auto socket = open_socket(*address);
   const int enabled = 1;
 #ifdef _WIN32

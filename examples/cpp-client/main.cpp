@@ -23,7 +23,7 @@ std::uint16_t parse_port(std::string_view text) {
 
 int main(int argc, char* argv[]) {
   if (argc != 1 && argc != 3) {
-    std::cerr << "usage: orbit_cpp_echo [IP PORT]\n";
+    std::cerr << "usage: orbit_cpp_echo [HOST PORT]\n";
     return 1;
   }
   try {

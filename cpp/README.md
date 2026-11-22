@@ -23,9 +23,11 @@ target_link_libraries(my_client PRIVATE orbit::cpp)
 
 ```cpp
 #include <orbit/tcp_client.hpp>
+#include <orbit/tcp_endpoint.hpp>
 
 int main() {
-  orbit::TcpClient client("127.0.0.1", 9000);
+  const auto endpoint = orbit::parse_tcp_endpoint("localhost:9000");
+  orbit::TcpClient client(endpoint.host, endpoint.port);
   client.send({1, 42, {'h', 'i'}});
   const auto reply = client.receive();
   const bool echoed = reply.id == 1 && reply.sequence == 42 &&
@@ -37,10 +39,11 @@ int main() {
 ## 接口约定
 
 - `orbit::rpc::marshal` 和 `unmarshal` 编解码单帧。`unmarshal` 接受 `std::span<const std::uint8_t>`，要求缓冲区恰好包含一帧。应用可在自己的 TLS 或 WebSocket 传输上使用这两个接口。
-- `orbit::TcpClient` 同步读写明文 TCP。传入数值 IPv4 或 IPv6 地址及非零端口（例如 `"::1", 9000`）。连接由客户端持有，`close()` 可重复调用，析构也会关闭；同一实例的操作需串行调用。
-- `TcpOptions` 的 `max_payload` 接受 1–65535，默认 65535；空载荷合法。`timeout` 接受 1–2147483647 毫秒，默认 5 秒，分别限制一次连接、一次完整发送和一次完整接收。接收超时涵盖帧头和载荷。
+- `orbit::parse_tcp_endpoint` 拆分 `host:port` 或 `[host]:port`。包含冒号的主机部分用方括号包住。函数保留主机部分的原始内容，端口默认要求非零，传入 `TcpEndpointUse::listen` 时可用 `0`。
+- `orbit::TcpClient` 同步读写明文 TCP。出站地址交给系统解析器处理，可传入 IPv4、IPv6 或系统可解析的名称，例如 `"127.0.0.1", 9000`、`"::1", 9000` 或 `"localhost", 9000`。每次建立连接时按系统解析顺序尝试候选，剩余候选均分连接剩余时间。连接由客户端持有，`close()` 可重复调用，析构也会关闭；同一实例的操作需串行调用。
+- `TcpOptions` 的 `max_payload` 接受 1–65535，默认 65535；空载荷合法。`timeout` 接受 1–2147483647 毫秒，默认 5 秒，分别限制一次连接、一次完整发送和一次完整接收。连接计时在解析前开始，平台的同步 DNS 调用无法中断。解析成功时若已到截止时间，客户端会报超时。接收超时涵盖帧头和载荷。
 - `TcpOptions::no_delay` 默认开启 `TCP_NODELAY`，减少连续发送小帧时的延迟。设为 `false` 可启用 Nagle 算法。
-- 参数无效时抛出 `std::invalid_argument`，载荷超限时抛出 `std::length_error`，协议错误与读帧过程中对端关闭时抛出 `std::runtime_error`，套接字错误和超时抛出 `std::system_error`。I/O 或入站帧解析失败后客户端会关闭连接；调用方可创建新的客户端。出站帧在写入前被拒绝时可以继续使用连接。
+- 参数无效时抛出 `std::invalid_argument`，载荷超限时抛出 `std::length_error`，主机名解析失败、协议错误与读帧过程中对端关闭时抛出 `std::runtime_error`，套接字错误和超时抛出 `std::system_error`。I/O 或入站帧解析失败后客户端会关闭连接；调用方可创建新的客户端。出站帧在写入前被拒绝时可以继续使用连接。
 - ID 和序号原样传输，业务载荷和请求响应匹配由应用定义。帧格式见 [Go rpc 文档](../rpc/README.md)。
 
 运行步骤见 [C++ 回显示例](../examples/cpp-client/README.md)。

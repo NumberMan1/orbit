@@ -10,17 +10,18 @@ namespace orbit {
 
 struct TcpOptions {
   std::size_t max_payload = rpc::max_payload;
-  // Each connect, send and receive has its own whole-operation timeout.
+  // Address candidates share one connect deadline. System DNS lookup cannot be interrupted.
+  // Sending and receiving each have a separate whole-operation timeout.
   std::chrono::milliseconds timeout{5000};
   // Set false to allow Nagle's algorithm on this connection.
   bool no_delay = true;
 };
 
-// Synchronous, plaintext TCP client for a numeric IPv4 or IPv6 address.
+// Synchronous, plaintext TCP client. The system resolver interprets the host.
 // Serialize access to each instance, including close and move operations.
 class TcpClient {
  public:
-  TcpClient(const std::string& ip, std::uint16_t port, TcpOptions options = {});
+  TcpClient(const std::string& host, std::uint16_t port, TcpOptions options = {});
   ~TcpClient();
 
   TcpClient(TcpClient&&) noexcept;
