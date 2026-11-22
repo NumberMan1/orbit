@@ -3,6 +3,10 @@
 记录面向使用者的变更。发布时填写版本与发布日期；历史详情以
 [Tags](https://github.com/NumberMan1/orbit/tags) 和 [提交记录](https://github.com/NumberMan1/orbit/commits) 为准。
 
+## v0.4.2 (2026-11-23)
+
+- `orbit::cpp` 新增独立的 `orbit::SerialQueue`，支持预分配的有界 FIFO 投递、基于单调时钟的串行周期更新、异常隔离、队列统计、可取消的排空等待和显式线程回收。
+
 ## v0.4.1 (2026-11-22)
 
 - C++ TCP 客户端接受系统解析器支持的出站地址，所有候选共用连接截止时间。新增 `parse_tcp_endpoint` 拆分地址和端口，并保留原始主机部分。

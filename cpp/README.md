@@ -1,6 +1,6 @@
 # Orbit C++
 
-C++23 库提供 Orbit 的 RO 帧编解码、同步 TCP 客户端和 TCP 请求服务端。库使用 C++ 标准库和系统套接字，支持 Windows、Linux 和 macOS。需要支持 C++23 的编译器及 CMake 3.20 或以上版本。
+C++23 库提供 Orbit 的 RO 帧编解码、同步 TCP 客户端、TCP 请求服务端和有界串行队列。库使用 C++ 标准库和系统套接字，支持 Windows、Linux 和 macOS。需要支持 C++23 的编译器及 CMake 3.20 或以上版本。
 
 标准库需提供 `std::jthread` 和 `std::stop_token`。使用 Apple 自带工具链时，可用 Xcode 26 或以上版本。 [Xcode 26 发行说明](https://developer.apple.com/documentation/xcode-release-notes/xcode-26-release-notes)
 
@@ -47,6 +47,32 @@ int main() {
 - ID 和序号原样传输，业务载荷和请求响应匹配由应用定义。帧格式见 [Go rpc 文档](../rpc/README.md)。
 
 运行步骤见 [C++ 回显示例](../examples/cpp-client/README.md)。
+
+## 有界串行队列
+
+`orbit::SerialQueue` 可用于串行修改应用状态或驱动定时更新。它与 TCP 组件独立，生命周期、投递和排空语义对应 Go [`service.Queue`](../service/README.md)。
+
+```cpp
+#include <orbit/serial_queue.hpp>
+
+int main() {
+  int count = 0;
+  orbit::SerialQueue queue(16);
+  if (queue.start() != orbit::QueueStartResult::started ||
+      queue.post([&] { ++count; }) != orbit::QueuePostResult::accepted) {
+    return 1;
+  }
+  queue.join();
+  return count == 1 ? 0 : 1;
+}
+```
+
+- 构造时指定正容量，再显式调用 `start()`。启动时传入的 `std::stop_token` 只用于启动前检查，已请求取消时返回 `cancelled`，之后可以重试。运行过或已停止的队列再次启动会返回 `closed`。
+- `post()` 按成功入队的顺序执行回调。等待执行的回调和正在移入槽位的投递共用容量，满时立即返回 `full`。队列槽位在构造时一次分配，回调对象在队列锁之外移动和销毁。启动前、关闭后或准备期间遇到关闭时返回 `closed`，空回调返回 `invalid_callback`。回调可以继续调用 `post()` 或读取 `status()`。
+- 通过 `SerialQueueOptions::interval` 和 `update` 配置周期更新。设置 `update` 时，间隔必须为正。`update` 接收预定触发时间 `std::chrono::steady_clock::time_point`，可用于计算间隔和推进定时任务。更新与普通回调共享线程和执行统计，错过的周期会合并，避免积压。
+- 回调抛出异常后，队列继续执行。可设置 `SerialQueueOptions::on_error`，在同一线程上接收 `std::exception_ptr` 并接入应用日志。未设置时可通过 `status().exceptions` 观察异常次数。处理钩子自身抛出的异常会被隔离。
+- `stop()`、`stop(token)` 和 `stop_for(timeout)` 都关闭投递并停止调度新的周期更新。排空完成后返回 `true`，取消或超时返回 `false` 时可继续等待排空。需要保留队列对象并回收工作线程资源时，可以调用 `join()`。`join()` 和析构都会关闭队列、排空任务，并等待线程退出，包括 `thread_local` 对象的析构。回调和异常处理钩子须及时返回，队列须在工作线程之外停止、回收和销毁。
+- `status()` 可并发读取。`queued` 统计已入队的回调，`preparing` 统计准备投递时占用的槽位，两者合计最多为 `capacity`。`accepting` 表示投递是否开放。`executed`、`exceptions`、`rejected` 和 `execution_nanos` 为累计值。执行时间包含普通回调及周期更新，`rejected` 只统计因满队列而拒绝的投递。
 
 ## C++ 请求服务端
 

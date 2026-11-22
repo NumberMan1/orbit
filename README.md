@@ -54,7 +54,7 @@ JSON 直接使用标准库 `encoding/json/v2`，Go 1.27.2 无需手动启用实�
 | 目录 | 能力 |
 | --- | --- |
 | [rpc](rpc/README.md) | 兼容原明文消息头的帧读写，长度检查、完整读写、序号透传 |
-| [cpp](cpp/README.md) | C++23 帧编解码、同步 TCP 客户端、TCP 请求服务端与 CMake 接入 |
+| [cpp](cpp/README.md) | C++23 帧编解码、同步 TCP 客户端、TCP 请求服务端、有界串行队列与 CMake 接入 |
 | [codec](codec/README.md) | 实例级 ID/名称/类型注册表，JSON v2、现代 Protobuf |
 | [socket](socket/README.md) | 会话查询/状态、有界收发、类型化消息与回复、收发钩子、队列桥接 |
 | [socket/tcp](socket/tcp/README.md) | TCP/TLS、受管理连接器、退避重连、网络选项 |
