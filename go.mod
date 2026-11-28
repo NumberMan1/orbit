@@ -8,7 +8,7 @@ require (
 	github.com/go-sql-driver/mysql v1.10.2
 	github.com/gorilla/websocket v1.5.3
 	github.com/redis/go-redis/v9 v9.23.0
-	go.etcd.io/etcd/api/v3 v3.7.3
+	go.etcd.io/etcd/api/v3 v3.7.4
 	go.etcd.io/etcd/client/v3 v3.7.3
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/yaml.v3 v3.0.1
@@ -30,7 +30,7 @@ require (
 	go.uber.org/atomic v1.12.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.1 // indirect
-	golang.org/x/net v0.61.0 // indirect
+	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260803160001-6ac0973c030d // indirect
